@@ -309,6 +309,9 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 		CreateMatViewStmt RefreshMatViewStmt CreateAmStmt
 		CreatePublicationStmt AlterPublicationStmt
 		CreateSubscriptionStmt AlterSubscriptionStmt DropSubscriptionStmt
+		CreateUserAttributeStmt CreateResourceAttributeStmt DropUserAttributeStmt DropResourceAttributeStmt
+		GrantUserAttributeStmt GrantResourceAttributeStmt RevokeUserAttributeStmt RevokeResourceAttributeStmt
+		CreateAbacRuleStmt DropAbacRuleStmt
 
 %type <node>	select_no_parens select_with_parens select_clause
 				simple_select values_clause
@@ -671,7 +674,9 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				json_object_constructor_null_clause_opt
 				json_array_constructor_null_clause_opt
 
-
+%type <str> 	value_all value_any
+%type <defelt> attribute_pair
+%type <list> attribute_pair_list user_attribute_clause resource_attribute_clause user_attribute_clause_opt resource_attribute_clause_opt attribute_clause
 /*
  * Non-keyword token types.  These are hard-wired into the "flex" lexer.
  * They must be listed first so that their numeric codes do not depend on
@@ -699,7 +704,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 /* ordinary key words in alphabetical order */
 %token <keyword> ABORT_P ABSENT ABSOLUTE_P ACCESS ACTION ADD_P ADMIN AFTER
 	AGGREGATE ALL ALSO ALTER ALWAYS ANALYSE ANALYZE AND ANY ARRAY AS ASC
-	ASENSITIVE ASSERTION ASSIGNMENT ASYMMETRIC ATOMIC AT ATTACH ATTRIBUTE AUTHORIZATION
+	ASENSITIVE ASSERTION ASSIGNMENT ASYMMETRIC ATOMIC AT ATTACH ATTRIBUTE AUTHORIZATION ABAC_RULE
 
 	BACKWARD BEFORE BEGIN_P BETWEEN BIGINT BINARY BIT
 	BOOLEAN_P BOTH BREADTH BY
@@ -765,7 +770,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	RANGE READ REAL REASSIGN RECURSIVE REF_P REFERENCES REFERENCING
 	REFRESH REINDEX RELATIVE_P RELEASE RENAME REPEATABLE REPLACE REPLICA
 	RESET RESTART RESTRICT RETURN RETURNING RETURNS REVOKE RIGHT ROLE ROLLBACK ROLLUP
-	ROUTINE ROUTINES ROW ROWS RULE
+	ROUTINE ROUTINES ROW ROWS RULE RESOURCE_ATTRIBUTE
 
 	SAVEPOINT SCALAR SCHEMA SCHEMAS SCROLL SEARCH SECOND_P SECURITY SELECT
 	SEQUENCE SEQUENCES
@@ -780,7 +785,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	TRUNCATE TRUSTED TYPE_P TYPES_P
 
 	UESCAPE UNBOUNDED UNCONDITIONAL UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN
-	UNLISTEN UNLOGGED UNTIL UPDATE USER USING
+	UNLISTEN UNLOGGED UNTIL UPDATE USER USING USER_ATTRIBUTE
 
 	VACUUM VALID VALIDATE VALIDATOR VALUE_P VALUES VARCHAR VARIADIC VARYING
 	VERBOSE VERSION_P VIEW VIEWS VIRTUAL VOLATILE
@@ -1059,6 +1064,12 @@ stmt:
 			| CreateEventTrigStmt
 			| CreateRoleStmt
 			| CreateUserStmt
+			| CreateUserAttributeStmt
+			| DropUserAttributeStmt
+			| CreateResourceAttributeStmt
+			| DropResourceAttributeStmt
+			| CreateAbacRuleStmt
+			| DropAbacRuleStmt
 			| CreateUserMappingStmt
 			| CreatedbStmt
 			| DeallocateStmt
@@ -1083,6 +1094,8 @@ stmt:
 			| FetchStmt
 			| GrantStmt
 			| GrantRoleStmt
+			| GrantUserAttributeStmt
+			| GrantResourceAttributeStmt
 			| ImportForeignSchemaStmt
 			| IndexStmt
 			| InsertStmt
@@ -1101,6 +1114,8 @@ stmt:
 			| RenameStmt
 			| RevokeStmt
 			| RevokeRoleStmt
+			| RevokeResourceAttributeStmt
+			| RevokeUserAttributeStmt
 			| RuleStmt
 			| SecLabelStmt
 			| SelectStmt
@@ -1542,6 +1557,204 @@ add_drop:	ADD_P									{ $$ = +1; }
 			| DROP									{ $$ = -1; }
 		;
 
+/*****************************************************************************
+ *
+ * Create a new Postgres DBMS user attribute
+ *
+ *****************************************************************************/
+
+CreateUserAttributeStmt:
+			CREATE USER_ATTRIBUTE name SimpleTypename
+				{
+					CreateUserAttributeStmt *n = makeNode(CreateUserAttributeStmt);
+					n->attribute = $3;
+					n->typeName = $4;
+					$$ = (Node *) n;
+				}
+		;
+
+/*****************************************************************************
+ *
+ * Drop a Postgres DBMS user attribute
+ *
+ *****************************************************************************/
+
+DropUserAttributeStmt:
+			DROP USER_ATTRIBUTE name
+				{
+					DropUserAttributeStmt *n = makeNode(DropUserAttributeStmt);
+					n->attribute = $3;
+					$$ = (Node *) n;
+				}
+		;		
+
+/*****************************************************************************
+ *
+ * Create a new Postgres DBMS resource attribute
+ *
+ *****************************************************************************/
+
+CreateResourceAttributeStmt:
+			CREATE RESOURCE_ATTRIBUTE name SimpleTypename
+				{
+					CreateResourceAttributeStmt *n = makeNode(CreateResourceAttributeStmt);
+					n->attribute = $3;
+					n->typeName = $4;
+					$$ = (Node *) n;
+				}
+		;
+
+/*****************************************************************************
+ *
+ * Drop a Postgres DBMS resource attribute
+ *
+ *****************************************************************************/
+
+DropResourceAttributeStmt:
+			DROP RESOURCE_ATTRIBUTE name
+				{
+					DropResourceAttributeStmt *n = makeNode(DropResourceAttributeStmt);
+					n->attribute = $3;
+					$$ = (Node *) n;
+				}
+		;
+
+/*****************************************************************************
+ *
+ * Grant/Revoke a Postgres user/resource attribute
+ *
+ *****************************************************************************/
+
+GrantUserAttributeStmt:
+			GRANT USER_ATTRIBUTE '{' name '=' NonReservedWord '}' TO role_list
+				{
+					GrantUserAttributeStmt *n = makeNode(GrantUserAttributeStmt);
+					n->attribute = $4;
+					n->value = $6;
+					n->grantees = $9;
+					$$ = (Node *) n;
+				}
+		;		
+
+
+GrantResourceAttributeStmt:
+			GRANT RESOURCE_ATTRIBUTE '{' name '=' NonReservedWord '}' TO qualified_name_list
+				{
+					GrantResourceAttributeStmt *n = makeNode(GrantResourceAttributeStmt);
+					n->attribute = $4;
+					n->value = $6;
+					n->grantees = $9;
+					$$ = (Node *) n;
+				}
+		;
+
+RevokeUserAttributeStmt:
+			REVOKE USER_ATTRIBUTE '{' name '=' value_all '}' FROM role_list
+				{
+					RevokeUserAttributeStmt *n = makeNode(RevokeUserAttributeStmt);
+					n->attribute = $4;
+					n->value = $6;
+					n->grantees = $9;
+					$$ = (Node *) n;
+				}
+		;
+
+RevokeResourceAttributeStmt:
+			REVOKE RESOURCE_ATTRIBUTE '{' name '=' value_all '}' FROM qualified_name_list
+				{
+					RevokeResourceAttributeStmt *n = makeNode(RevokeResourceAttributeStmt);
+					n->attribute = $4;
+					n->value = $6;
+					n->grantees = $9;
+					$$ = (Node *) n;
+				}
+		;
+
+value_all:
+		NonReservedWord
+		| ALL 			{ $$ = pstrdup($1); }
+		;
+
+/*****************************************************************************
+ *
+ * Create a new Postgres DBMS ABAC rule
+ *
+ *****************************************************************************/
+
+CreateAbacRuleStmt:
+			CREATE ABAC_RULE name FOR privileges OF attribute_clause {
+					CreateAbacRuleStmt *n = makeNode(CreateAbacRuleStmt);
+					n -> rule_name = $3;
+					n -> privileges = $5;
+					n -> attribute_clause = $7;
+					$$ = (Node *) n;
+				}
+		;
+
+attribute_clause:
+            user_attribute_clause resource_attribute_clause_opt
+                { $$ = list_make2($1, $2); }
+            | resource_attribute_clause user_attribute_clause_opt
+                { $$ = list_make2($2, $1); }
+            | /* EMPTY */
+                { $$ = list_make2(NIL, NIL); }
+        ;
+
+user_attribute_clause:
+            USER_ATTRIBUTE '(' attribute_pair_list ')'
+                { $$ = $3; }
+        ;
+
+user_attribute_clause_opt:
+            AND user_attribute_clause
+                { $$ = $2; }
+            | /* EMPTY */
+                { $$ = NIL; }
+        ;
+
+resource_attribute_clause:
+            RESOURCE_ATTRIBUTE '(' attribute_pair_list ')'
+                { $$ = $3; }
+        ;
+
+resource_attribute_clause_opt:
+            AND resource_attribute_clause
+                { $$ = $2; }
+            | /* EMPTY */
+                { $$ = NIL; }
+        ;
+
+attribute_pair_list:
+            attribute_pair
+                { $$ = list_make1($1); }
+            | attribute_pair_list ',' attribute_pair
+                { $$ = lappend($1, $3); }
+        ;
+
+attribute_pair:
+            NonReservedWord '=' value_any
+                { $$ = makeDefElem($1, (Node *)makeString($3), @1); }
+        ;
+
+value_any:
+		NonReservedWord
+		| ANY 		{ $$ = pstrdup($1); }
+		;
+
+/*****************************************************************************
+ *
+ * Drop a Postgres DBMS ABAC rule
+ *
+ *****************************************************************************/
+
+DropAbacRuleStmt:
+			DROP ABAC_RULE name
+			{
+				DropAbacRuleStmt *n = makeNode(DropAbacRuleStmt);
+				n -> rule_name = $3;
+				$$ = (Node *) n;
+			}
+		;
 
 /*****************************************************************************
  *
@@ -17730,7 +17943,8 @@ BareColLabel:	IDENT								{ $$ = $1; }
 /* "Unreserved" keywords --- available for use as any kind of name.
  */
 unreserved_keyword:
-			  ABORT_P
+			ABAC_RULE
+			| ABORT_P
 			| ABSENT
 			| ABSOLUTE_P
 			| ACCESS
@@ -17964,6 +18178,7 @@ unreserved_keyword:
 			| REPLACE
 			| REPLICA
 			| RESET
+			| RESOURCE_ATTRIBUTE
 			| RESTART
 			| RESTRICT
 			| RETURN
@@ -18039,6 +18254,7 @@ unreserved_keyword:
 			| UNLOGGED
 			| UNTIL
 			| UPDATE
+			| USER_ATTRIBUTE
 			| VACUUM
 			| VALID
 			| VALIDATE
@@ -18271,7 +18487,8 @@ reserved_keyword:
  * in kwlist.h if it is included here, or AS_LABEL if it is not.
  */
 bare_label_keyword:
-			  ABORT_P
+			ABAC_RULE
+			| ABORT_P
 			| ABSENT
 			| ABSOLUTE_P
 			| ACCESS
@@ -18596,6 +18813,7 @@ bare_label_keyword:
 			| REPLACE
 			| REPLICA
 			| RESET
+			| RESOURCE_ATTRIBUTE
 			| RESTART
 			| RESTRICT
 			| RETURN
@@ -18692,6 +18910,7 @@ bare_label_keyword:
 			| UNTIL
 			| UPDATE
 			| USER
+			| USER_ATTRIBUTE
 			| USING
 			| VACUUM
 			| VALID

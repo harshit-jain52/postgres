@@ -190,11 +190,15 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_CreateTableSpaceStmt:
 		case T_CreateTransformStmt:
 		case T_CreateTrigStmt:
+		case T_CreateUserAttributeStmt:
+		case T_CreateResourceAttributeStmt:
 		case T_CreateUserMappingStmt:
 		case T_CreatedbStmt:
 		case T_DefineStmt:
 		case T_DropOwnedStmt:
 		case T_DropRoleStmt:
+		case T_DropUserAttributeStmt:
+		case T_DropResourceAttributeStmt:
 		case T_DropStmt:
 		case T_DropSubscriptionStmt:
 		case T_DropTableSpaceStmt:
@@ -202,6 +206,12 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_DropdbStmt:
 		case T_GrantRoleStmt:
 		case T_GrantStmt:
+		case T_GrantUserAttributeStmt:
+		case T_GrantResourceAttributeStmt:
+		case T_RevokeUserAttributeStmt:
+		case T_RevokeResourceAttributeStmt:
+		case T_CreateAbacRuleStmt:
+		case T_DropAbacRuleStmt:
 		case T_ImportForeignSchemaStmt:
 		case T_IndexStmt:
 		case T_ReassignOwnedStmt:
@@ -920,6 +930,49 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 		case T_DropRoleStmt:
 			/* no event triggers for global objects */
 			DropRole((DropRoleStmt *) parsetree);
+			break;
+			
+			/*
+			 * ******************************** USER ATTRIBUTE statements ****
+			 */
+		case T_CreateUserAttributeStmt:
+			CreateUserAttribute(pstate, (CreateUserAttributeStmt *) parsetree);
+			break;
+		
+		case T_CreateResourceAttributeStmt:
+			CreateResourceAttribute(pstate, (CreateResourceAttributeStmt *) parsetree);
+			break;
+		
+		case T_DropUserAttributeStmt:
+			DropUserAttribute(pstate, (DropUserAttributeStmt *) parsetree);
+			break;
+		
+		case T_DropResourceAttributeStmt:
+			DropResourceAttribute(pstate, (DropResourceAttributeStmt *) parsetree);
+			break;
+
+		case T_GrantUserAttributeStmt:
+			GrantUserAttribute(pstate, (GrantUserAttributeStmt *) parsetree);
+			break;
+		
+		case T_GrantResourceAttributeStmt:
+			GrantResourceAttribute(pstate, (GrantResourceAttributeStmt *) parsetree);
+			break;
+		
+		case T_RevokeUserAttributeStmt:
+			RevokeUserAttribute(pstate, (RevokeUserAttributeStmt *) parsetree);
+			break;
+		
+		case T_RevokeResourceAttributeStmt:
+			RevokeResourceAttribute(pstate, (RevokeResourceAttributeStmt *) parsetree);
+			break;
+		
+		case T_CreateAbacRuleStmt:
+			CreateAbacRule(pstate, (CreateAbacRuleStmt *) parsetree);
+			break;
+		
+		case T_DropAbacRuleStmt:
+			DropAbacRule(pstate, (DropAbacRuleStmt *) parsetree);
 			break;
 
 		case T_ReassignOwnedStmt:
@@ -2968,6 +3021,46 @@ CreateCommandTag(Node *parsetree)
 			tag = CMDTAG_DROP_ROLE;
 			break;
 
+		case T_CreateUserAttributeStmt:
+			tag = CMDTAG_CREATE_USER_ATTRIBUTE;
+			break;
+		
+		case T_CreateResourceAttributeStmt:
+			tag = CMDTAG_CREATE_RESOURCE_ATTRIBUTE;
+			break;
+		
+		case T_DropUserAttributeStmt:
+			tag = CMDTAG_DROP_USER_ATTRIBUTE;
+			break;
+
+		case T_DropResourceAttributeStmt:
+			tag = CMDTAG_DROP_RESOURCE_ATTRIBUTE;
+			break;
+
+		case T_GrantUserAttributeStmt:
+			tag = CMDTAG_GRANT_USER_ATTRIBUTE;
+			break;
+		
+		case T_GrantResourceAttributeStmt:
+			tag = CMDTAG_GRANT_RESOURCE_ATTRIBUTE;
+			break;
+		
+		case T_RevokeUserAttributeStmt:
+			tag = CMDTAG_REVOKE_USER_ATTRIBUTE;
+			break;
+		
+		case T_RevokeResourceAttributeStmt:
+			tag = CMDTAG_REVOKE_RESOURCE_ATTRIBUTE;
+			break;
+		
+		case T_CreateAbacRuleStmt:
+			tag = CMDTAG_CREATE_ABAC_RULE;
+			break;
+		
+		case T_DropAbacRuleStmt:
+			tag = CMDTAG_CREATE_ABAC_RULE;
+			break;
+
 		case T_DropOwnedStmt:
 			tag = CMDTAG_DROP_OWNED;
 			break;
@@ -3586,6 +3679,46 @@ GetCommandLogLevel(Node *parsetree)
 			break;
 
 		case T_DropRoleStmt:
+			lev = LOGSTMT_DDL;
+			break;
+		
+		case T_CreateUserAttributeStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_CreateResourceAttributeStmt:
+			lev = LOGSTMT_DDL;
+			break;
+		
+		case T_DropUserAttributeStmt:
+			lev = LOGSTMT_DDL;
+			break;
+		
+		case T_DropResourceAttributeStmt:
+			lev = LOGSTMT_DDL;
+			break;
+		
+		case T_GrantUserAttributeStmt:
+			lev = LOGSTMT_DDL;
+			break;
+		
+		case T_GrantResourceAttributeStmt:
+			lev = LOGSTMT_DDL;
+			break;
+		
+		case T_RevokeUserAttributeStmt:
+			lev = LOGSTMT_DDL;
+			break;
+		
+		case T_RevokeResourceAttributeStmt:
+			lev = LOGSTMT_DDL;
+			break;
+		
+		case T_CreateAbacRuleStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
+		case T_DropAbacRuleStmt:
 			lev = LOGSTMT_DDL;
 			break;
 

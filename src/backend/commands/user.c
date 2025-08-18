@@ -2592,3 +2592,79 @@ assign_createrole_self_grant(const char *newval, void *extra)
 	createrole_self_grant_options.set =
 		(options & GRANT_ROLE_SPECIFIED_SET) != 0;
 }
+
+Oid
+CreateUserAttribute(ParseState *pstate, CreateUserAttributeStmt *stmt){
+	/* This function is not implemented in this version */
+	ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("CREATE USER ATTRIBUTE is not supported in this version. Attribute: \"%s\"", stmt->attribute)));
+	return InvalidOid; /* Unreachable, but keeps compiler happy */
+}
+
+Oid
+CreateResourceAttribute(ParseState *pstate, CreateResourceAttributeStmt *stmt){
+	/* This function is not implemented in this version */
+	ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("CREATE RESOURCE ATTRIBUTE is not supported in this version. Attribute: \"%s\"", stmt->attribute)));
+	return InvalidOid; /* Unreachable, but keeps compiler happy */
+}
+
+void DropUserAttribute(ParseState *pstate, DropUserAttributeStmt *stmt){
+	/* This function is not implemented in this version */
+	ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("DROP USER ATTRIBUTE is not supported in this version. Attribute: \"%s\"", stmt->attribute)));
+}
+
+void DropResourceAttribute(ParseState *pstate, DropResourceAttributeStmt *stmt){
+	/* This function is not implemented in this version */
+	ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("DROP RESOURCE ATTRIBUTE is not supported in this version. Attribute: \"%s\"", stmt->attribute)));	 
+}
+
+void GrantUserAttribute(ParseState *pstate, GrantUserAttributeStmt *stmt){
+	/* This function is not implemented in this version */
+	ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("GRANT USER ATTRIBUTE is not supported in this version. Attribute: \"%s\", Value: \"%s\"", stmt->attribute, stmt->value)));
+}
+
+void GrantResourceAttribute(ParseState *pstate, GrantResourceAttributeStmt *stmt){
+	/* This function is not implemented in this version */
+	ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("GRANT RESOURCE ATTRIBUTE is not supported in this version. Attribute: \"%s\", Value: \"%s\"", stmt->attribute, stmt->value)));
+}
+
+void RevokeUserAttribute(ParseState *pstate, RevokeUserAttributeStmt *stmt){
+	/* This function is not implemented in this version */
+	ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("REVOKE USER ATTRIBUTE is not supported in this version. Attribute: \"%s\", Value: \"%s\"", stmt->attribute, stmt->value)));
+}
+
+void RevokeResourceAttribute(ParseState *pstate, RevokeResourceAttributeStmt *stmt){
+	/* This function is not implemented in this version */
+	ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("REVOKE RESOURCE ATTRIBUTE is not supported in this version. Attribute: \"%s\", Value: \"%s\"", stmt->attribute, stmt->value)));
+}
+
+Oid
+CreateAbacRule(ParseState *pstate, CreateAbacRuleStmt *stmt){
+	/* This function is not implemented in this version */
+	ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("CREATE ABAC RULE is not supported in this version. Rule: \"%s\"", stmt->rule_name)));
+	return InvalidOid; /* Unreachable, but keeps compiler happy */
+}
+
+void DropAbacRule(ParseState *pstate, DropAbacRuleStmt *stmt){
+	/* This function is not implemented in this version */
+	ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("DROP ABAC RULE is not supported in this version. Rule: \"%s\"", stmt->rule_name)));
+}

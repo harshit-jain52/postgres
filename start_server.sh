@@ -1,4 +1,4 @@
-su - postgres -c "/usr/local/pgsql/bin/pg_ctl -D /usr/local/pgsql/data stop"
+./stop_server.sh
 make
 sudo make install
 su - postgres -c "/usr/local/pgsql/bin/pg_ctl -D /usr/local/pgsql/data -l /usr/local/pgsql/data/logfile start"

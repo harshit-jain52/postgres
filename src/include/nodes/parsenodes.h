@@ -3212,6 +3212,95 @@ typedef struct DropRoleStmt
 } DropRoleStmt;
 
 /* ----------------------
+ *		{Create|Drop|Grant|Revoke} User Attribute Statement
+ * ----------------------
+ */
+typedef struct CreateUserAttributeStmt
+{
+	NodeTag		type;
+	char 	*attribute;
+	TypeName *typeName;
+	
+} CreateUserAttributeStmt;
+
+typedef struct DropUserAttributeStmt
+{
+	NodeTag		type;
+	char 	*attribute;
+	
+} DropUserAttributeStmt;
+
+typedef struct GrantUserAttributeStmt
+{
+	NodeTag		type;
+	char *attribute;
+	char *value;
+	List	   *grantees;
+} GrantUserAttributeStmt;
+
+typedef struct RevokeUserAttributeStmt
+{
+	NodeTag		type;
+	char *attribute;
+	char* value;
+	List	   *grantees;
+} RevokeUserAttributeStmt;
+
+/* ----------------------
+ *		{Create|Drop|Grant|Revoke} Resource Attribute Statement
+ * ----------------------
+ */
+typedef struct CreateResourceAttributeStmt
+{
+	NodeTag		type;
+	char 	*attribute;
+	TypeName *typeName;
+	
+} CreateResourceAttributeStmt;
+
+typedef struct DropResourceAttributeStmt
+{
+	NodeTag		type;
+	char 	*attribute;
+	
+} DropResourceAttributeStmt;
+
+typedef struct GrantResourceAttributeStmt
+{
+	NodeTag		type;
+	char *attribute;
+	char *value;
+	List	   *grantees;
+} GrantResourceAttributeStmt;
+
+typedef struct RevokeResourceAttributeStmt
+{
+	NodeTag		type;
+	char *attribute;
+	char* value;
+	List	   *grantees;
+} RevokeResourceAttributeStmt;
+
+/* ----------------------
+ *		{Create|Drop} ABAC RULE Statement
+ * ----------------------
+ */
+
+typedef struct CreateAbacRuleStmt
+{
+	NodeTag		type;
+	char	   *rule_name;		
+	List	   *privileges;		
+	List	   *attribute_clause;
+} CreateAbacRuleStmt;
+
+typedef struct DropAbacRuleStmt
+{
+	NodeTag		type;
+	char	   *rule_name;
+} DropAbacRuleStmt;
+
+/* ----------------------
  *		{Create|Alter} SEQUENCE Statement
  * ----------------------
  */
