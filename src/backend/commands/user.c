@@ -21,6 +21,8 @@
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
+#include "catalog/pg_user_attr.h"
+#include "catalog/pg_resource_attr.h"
 #include "catalog/pg_auth_members.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_database.h"
@@ -2593,23 +2595,148 @@ assign_createrole_self_grant(const char *newval, void *extra)
 		(options & GRANT_ROLE_SPECIFIED_SET) != 0;
 }
 
+/*
+ * Attribute-Based Access Control (ABAC) functions
+ */
+
 Oid
 CreateUserAttribute(ParseState *pstate, CreateUserAttributeStmt *stmt){
-	/* This function is not implemented in this version */
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("CREATE USER ATTRIBUTE is not supported in this version. Attribute: \"%s\"", stmt->attribute)));
-	return InvalidOid; /* Unreachable, but keeps compiler happy */
+	Relation	pg_user_attr_rel;
+	TupleDesc	pg_user_attr_dsc;
+	HeapTuple	tuple;
+	Datum		new_record[Natts_pg_user_attr] = {0};
+	bool		new_record_nulls[Natts_pg_user_attr] = {0};
+	Oid			attrib_id;
+
+	/*
+	 *TODO: check for permissions for creating attribute
+	 */
+
+	/*
+	 * Check that the user is not trying to create an attribute in the reserved
+	 * "pg_" namespace.
+	 */
+	if (IsReservedName(stmt->attribute))
+		ereport(ERROR,
+				(errcode(ERRCODE_RESERVED_NAME),
+				 errmsg("attribute name \"%s\" is reserved",
+						stmt->attribute),
+				 errdetail("Attribute names starting with \"pg_\" are reserved.")));
+
+
+	pg_user_attr_rel = table_open(UserAttrRelationId, RowExclusiveLock);
+	pg_user_attr_dsc = RelationGetDescr(pg_user_attr_rel);
+
+	/*
+	 * Check the pg_user_attr relation to be certain the attribute doesn't already
+	 * exist.
+	 */
+
+	if (OidIsValid(get_user_attr_oid(stmt->attribute, true)))
+		ereport(ERROR,
+			(errcode(ERRCODE_DUPLICATE_OBJECT),
+				errmsg("ABAC user attribute \"%s\" already exists",
+					stmt->attribute)));
+
+	/*
+	 * Build the tuple to insert. 
+	 */
+
+	attrib_id = GetNewOidWithIndex(pg_user_attr_rel, UserAttrOidIndexId,
+								Anum_pg_user_attr_oid);
+	new_record[Anum_pg_user_attr_oid - 1] = ObjectIdGetDatum(attrib_id);
+
+	new_record[Anum_pg_user_attr_attrib_name- 1] = DirectFunctionCall1(namein, CStringGetDatum(stmt->attribute));
+
+	tuple = heap_form_tuple(pg_user_attr_dsc, new_record, new_record_nulls);
+
+	/*
+	 * Insert new record in the pg_user_attr table
+	 */
+	CatalogTupleInsert(pg_user_attr_rel, tuple);
+
+	/*
+	 * Advance command counter so we can see new record
+	 */
+	CommandCounterIncrement();
+
+	/*
+	 * Close pg_user_attr, but keep lock till commit.
+	 */
+	table_close(pg_user_attr_rel, NoLock);
+
+	return attrib_id;
 }
 
 Oid
 CreateResourceAttribute(ParseState *pstate, CreateResourceAttributeStmt *stmt){
-	/* This function is not implemented in this version */
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("CREATE RESOURCE ATTRIBUTE is not supported in this version. Attribute: \"%s\"", stmt->attribute)));
-	return InvalidOid; /* Unreachable, but keeps compiler happy */
+	Relation	pg_resource_attr_rel;
+	TupleDesc	pg_resource_attr_dsc;
+	HeapTuple	tuple;
+	Datum		new_record[Natts_pg_resource_attr] = {0};
+	bool		new_record_nulls[Natts_pg_resource_attr] = {0};
+	Oid			attrib_id;
+
+	/*
+	 *TODO: check for permissions for creating attribute
+	 */
+
+	/*
+	 * Check that the user is not trying to create an attribute in the reserved
+	 * "pg_" namespace.
+	 */
+	if (IsReservedName(stmt->attribute))
+		ereport(ERROR,
+				(errcode(ERRCODE_RESERVED_NAME),
+				 errmsg("attribute name \"%s\" is reserved",
+						stmt->attribute),
+				 errdetail("Attribute names starting with \"pg_\" are reserved.")));
+
+
+	pg_resource_attr_rel = table_open(ResourceAttrRelationId, RowExclusiveLock);
+	pg_resource_attr_dsc = RelationGetDescr(pg_resource_attr_rel);
+
+	/*
+	 * Check the pg_resource_attr relation to be certain the attribute doesn't already
+	 * exist.
+	 */
+
+	if (OidIsValid(get_resource_attr_oid(stmt->attribute, true)))
+		ereport(ERROR,
+			(errcode(ERRCODE_DUPLICATE_OBJECT),
+				errmsg("ABAC resource attribute \"%s\" already exists",
+					stmt->attribute)));
+
+	/*
+	 * Build the tuple to insert. 
+	 */
+
+	attrib_id = GetNewOidWithIndex(pg_resource_attr_rel, ResourceAttrOidIndexId,
+								Anum_pg_resource_attr_oid);
+	new_record[Anum_pg_resource_attr_oid - 1] = ObjectIdGetDatum(attrib_id);
+
+	new_record[Anum_pg_resource_attr_attrib_name- 1] = DirectFunctionCall1(namein, CStringGetDatum(stmt->attribute));
+
+	tuple = heap_form_tuple(pg_resource_attr_dsc, new_record, new_record_nulls);
+
+	/*
+	 * Insert new record in the pg_resource_attr table
+	 */
+	CatalogTupleInsert(pg_resource_attr_rel, tuple);
+
+	/*
+	 * Advance command counter so we can see new record
+	 */
+	CommandCounterIncrement();
+
+	/*
+	 * Close pg_resource_attr, but keep lock till commit.
+	 */
+	table_close(pg_resource_attr_rel, NoLock);
+
+	return attrib_id;
 }
+
 
 void DropUserAttribute(ParseState *pstate, DropUserAttributeStmt *stmt){
 	/* This function is not implemented in this version */

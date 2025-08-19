@@ -31,6 +31,8 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_user_attr.h"
+#include "catalog/pg_resource_attr.h"
 #include "commands/dbcommands.h"
 #include "commands/proclang.h"
 #include "commands/tablespace.h"
@@ -5713,4 +5715,44 @@ check_rolespec_name(const RoleSpec *role, const char *detail_msg)
 					 errmsg("role name \"%s\" is reserved",
 							role->rolename)));
 	}
+}
+
+/*
+ * get_user_attr_oid - Given a ABAC attribute name, look up the attribute's OID.
+ *
+ * If missing_ok is false, throw an error if attribute name not found.  If
+ * true, just return InvalidOid.
+ */
+Oid
+get_user_attr_oid(const char *attrname, bool missing_ok)
+{
+	Oid	oid;
+
+	oid = GetSysCacheOid1(USERATTRNAME, Anum_pg_user_attr_oid,
+						  CStringGetDatum(attrname));
+	if (!OidIsValid(oid) && !missing_ok)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("ABAC user attribute \"%s\" does not exist", attrname)));
+	return oid;
+}
+
+/*
+ * get_resource_attr_oid - Given a ABAC attribute name, look up the attribute's OID.
+ *
+ * If missing_ok is false, throw an error if attribute name not found.  If
+ * true, just return InvalidOid.
+ */
+Oid
+get_resource_attr_oid(const char *attrname, bool missing_ok)
+{
+	Oid	oid;
+
+	oid = GetSysCacheOid1(RESOURCEATTRNAME, Anum_pg_resource_attr_oid,
+						  CStringGetDatum(attrname));
+	if (!OidIsValid(oid) && !missing_ok)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("ABAC resource attribute \"%s\" does not exist", attrname)));
+	return oid;
 }

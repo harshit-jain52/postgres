@@ -34,6 +34,7 @@
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_parameter_acl.h"
 #include "catalog/pg_replication_origin.h"
+#include "catalog/pg_resource_attr.h"
 #include "catalog/pg_seclabel.h"
 #include "catalog/pg_shdepend.h"
 #include "catalog/pg_shdescription.h"
@@ -41,6 +42,7 @@
 #include "catalog/pg_subscription.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_user_attr.h"
 #include "miscadmin.h"
 #include "utils/fmgroids.h"
 #include "utils/fmgrprotos.h"
@@ -310,11 +312,13 @@ IsSharedRelation(Oid relationId)
 		relationId == DbRoleSettingRelationId ||
 		relationId == ParameterAclRelationId ||
 		relationId == ReplicationOriginRelationId ||
+		relationId == ResourceAttrRelationId ||
 		relationId == SharedDependRelationId ||
 		relationId == SharedDescriptionRelationId ||
 		relationId == SharedSecLabelRelationId ||
 		relationId == SubscriptionRelationId ||
-		relationId == TableSpaceRelationId)
+		relationId == TableSpaceRelationId ||
+		relationId == UserAttrRelationId)
 		return true;
 	/* These are their indexes */
 	if (relationId == AuthIdOidIndexId ||
@@ -330,6 +334,8 @@ IsSharedRelation(Oid relationId)
 		relationId == ParameterAclParnameIndexId ||
 		relationId == ReplicationOriginIdentIndex ||
 		relationId == ReplicationOriginNameIndex ||
+		relationId == ResourceAttrOidIndexId ||
+		relationId == ResourceAttrAttribNameIndexId ||
 		relationId == SharedDependDependerIndexId ||
 		relationId == SharedDependReferenceIndexId ||
 		relationId == SharedDescriptionObjIndexId ||
@@ -337,7 +343,9 @@ IsSharedRelation(Oid relationId)
 		relationId == SubscriptionNameIndexId ||
 		relationId == SubscriptionObjectIndexId ||
 		relationId == TablespaceNameIndexId ||
-		relationId == TablespaceOidIndexId)
+		relationId == TablespaceOidIndexId ||
+		relationId == UserAttrOidIndexId ||
+		relationId == UserAttrAttribNameIndexId)
 		return true;
 	/* These are their toast tables and toast indexes */
 	if (relationId == PgDatabaseToastTable ||

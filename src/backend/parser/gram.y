@@ -1564,11 +1564,10 @@ add_drop:	ADD_P									{ $$ = +1; }
  *****************************************************************************/
 
 CreateUserAttributeStmt:
-			CREATE USER_ATTRIBUTE name SimpleTypename
+			CREATE USER_ATTRIBUTE name
 				{
 					CreateUserAttributeStmt *n = makeNode(CreateUserAttributeStmt);
 					n->attribute = $3;
-					n->typeName = $4;
 					$$ = (Node *) n;
 				}
 		;
@@ -1595,11 +1594,10 @@ DropUserAttributeStmt:
  *****************************************************************************/
 
 CreateResourceAttributeStmt:
-			CREATE RESOURCE_ATTRIBUTE name SimpleTypename
+			CREATE RESOURCE_ATTRIBUTE name
 				{
 					CreateResourceAttributeStmt *n = makeNode(CreateResourceAttributeStmt);
 					n->attribute = $3;
-					n->typeName = $4;
 					$$ = (Node *) n;
 				}
 		;

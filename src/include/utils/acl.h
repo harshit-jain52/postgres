@@ -287,4 +287,8 @@ extern bool object_ownercheck(Oid classid, Oid objectid, Oid roleid);
 extern bool has_createrole_privilege(Oid roleid);
 extern bool has_bypassrls_privilege(Oid roleid);
 
+/* ABAC-specific functions */
+extern Oid	get_user_attr_oid(const char *attrname, bool missing_ok);
+extern Oid	get_resource_attr_oid(const char *attrname, bool missing_ok);
+
 #endif							/* ACL_H */

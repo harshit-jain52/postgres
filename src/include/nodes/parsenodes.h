@@ -3212,15 +3212,14 @@ typedef struct DropRoleStmt
 } DropRoleStmt;
 
 /* ----------------------
- *		{Create|Drop|Grant|Revoke} User Attribute Statement
+ *		{Create|Drop|Grant|Revoke} ABAC Attribute Statement
  * ----------------------
  */
+
 typedef struct CreateUserAttributeStmt
 {
 	NodeTag		type;
-	char 	*attribute;
-	TypeName *typeName;
-	
+	char 	*attribute;		/* name of the attribute */
 } CreateUserAttributeStmt;
 
 typedef struct DropUserAttributeStmt
@@ -3246,16 +3245,10 @@ typedef struct RevokeUserAttributeStmt
 	List	   *grantees;
 } RevokeUserAttributeStmt;
 
-/* ----------------------
- *		{Create|Drop|Grant|Revoke} Resource Attribute Statement
- * ----------------------
- */
 typedef struct CreateResourceAttributeStmt
 {
 	NodeTag		type;
-	char 	*attribute;
-	TypeName *typeName;
-	
+	char 	*attribute;		/* name of the attribute */
 } CreateResourceAttributeStmt;
 
 typedef struct DropResourceAttributeStmt
