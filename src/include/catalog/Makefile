@@ -83,7 +83,8 @@ CATALOG_HEADERS := \
 	pg_subscription.h \
 	pg_subscription_rel.h \
 	pg_resource_attr.h \
-	pg_user_attr.h
+	pg_user_attr.h \
+	pg_user_attr_val.h
 
 GENERATED_HEADERS := $(CATALOG_HEADERS:%.h=%_d.h)
 

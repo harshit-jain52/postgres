@@ -43,6 +43,7 @@
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_user_attr.h"
+#include "catalog/pg_user_attr_val.h"
 #include "miscadmin.h"
 #include "utils/fmgroids.h"
 #include "utils/fmgrprotos.h"
@@ -318,7 +319,8 @@ IsSharedRelation(Oid relationId)
 		relationId == SharedSecLabelRelationId ||
 		relationId == SubscriptionRelationId ||
 		relationId == TableSpaceRelationId ||
-		relationId == UserAttrRelationId)
+		relationId == UserAttrRelationId ||
+		relationId == UserAttrValRelationId)
 		return true;
 	/* These are their indexes */
 	if (relationId == AuthIdOidIndexId ||
@@ -345,7 +347,9 @@ IsSharedRelation(Oid relationId)
 		relationId == TablespaceNameIndexId ||
 		relationId == TablespaceOidIndexId ||
 		relationId == UserAttrOidIndexId ||
-		relationId == UserAttrAttribNameIndexId)
+		relationId == UserAttrAttribNameIndexId ||
+		relationId == UserAttrValPkeyIndexId
+	)
 		return true;
 	/* These are their toast tables and toast indexes */
 	if (relationId == PgDatabaseToastTable ||

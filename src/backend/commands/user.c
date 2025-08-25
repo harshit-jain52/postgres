@@ -22,6 +22,7 @@
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
 #include "catalog/pg_user_attr.h"
+#include "catalog/pg_user_attr_val.h"
 #include "catalog/pg_resource_attr.h"
 #include "catalog/pg_auth_members.h"
 #include "catalog/pg_authid.h"
@@ -2752,11 +2753,63 @@ void DropResourceAttribute(ParseState *pstate, DropResourceAttributeStmt *stmt){
 			 errmsg("DROP RESOURCE ATTRIBUTE is not supported in this version. Attribute: \"%s\"", stmt->attribute)));	 
 }
 
+void
+AddRoleUserAttr(Oid roleid, const char* rolname,
+				Oid attrid, const char* attribute,
+				const char* value)
+{
+	Relation	pg_user_attr_val_rel;
+	TupleDesc	pg_user_attr_val_dsc;
+	Datum		new_record[Natts_pg_auth_members] = {0};
+	bool		new_record_nulls[Natts_pg_auth_members] = {0};
+	HeapTuple	tuple;
+
+	pg_user_attr_val_rel = table_open(UserAttrValRelationId, RowExclusiveLock);
+	pg_user_attr_val_dsc = RelationGetDescr(pg_user_attr_val_rel);
+
+	new_record[Anum_pg_user_attr_val_attribute - 1] = DirectFunctionCall1(namein, CStringGetDatum(attribute));
+	new_record[Anum_pg_user_attr_val_user_name - 1] = DirectFunctionCall1(namein, CStringGetDatum(rolname));
+	new_record[Anum_pg_user_attr_val_value - 1] = DirectFunctionCall1(textin, CStringGetDatum(value));
+
+	tuple = heap_form_tuple(pg_user_attr_val_dsc, new_record, new_record_nulls);
+	CatalogTupleInsert(pg_user_attr_val_rel, tuple);
+
+	/* Close pg_user_attr_val_rel, but keep lock till commit. */
+	table_close(pg_user_attr_val_rel, NoLock);
+}
+
 void GrantUserAttribute(ParseState *pstate, GrantUserAttributeStmt *stmt){
-	/* This function is not implemented in this version */
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("GRANT USER ATTRIBUTE is not supported in this version. Attribute: \"%s\", Value: \"%s\"", stmt->attribute, stmt->value)));
+	Relation	pg_authid_rel;
+	Relation	pg_user_attr_rel;
+	List	   *grantee_ids;
+	ListCell   *item;
+
+	grantee_ids = roleSpecsToIds(stmt->grantees);
+
+	/*
+	 *TODO: check for permissions for grantor
+	 */
+
+	pg_authid_rel = table_open(AuthIdRelationId, AccessShareLock);
+	pg_user_attr_rel = table_open(UserAttrRelationId, AccessShareLock);
+
+	foreach(item, stmt->grantees)
+	{
+		AccessPriv *priv = (AccessPriv *) lfirst(item);
+		char	   *rolename = priv->priv_name;
+		Oid			roleid;
+		Oid			attrid;
+
+		roleid = get_role_oid(rolename, false);
+		attrid = get_user_attr_oid(stmt->attribute, false);
+		AddRoleUserAttr(roleid, rolename, attrid, stmt->attribute, stmt->value);
+	}
+
+	/*
+	 * Close pg_authid_rel and pg_user_attr_rel, but keep lock till commit.
+	 */
+	table_close(pg_authid_rel, NoLock);
+	table_close(pg_user_attr_rel, NoLock);
 }
 
 void GrantResourceAttribute(ParseState *pstate, GrantResourceAttributeStmt *stmt){
