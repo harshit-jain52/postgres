@@ -2760,21 +2760,55 @@ AddRoleUserAttr(Oid roleid, const char* rolname,
 {
 	Relation	pg_user_attr_val_rel;
 	TupleDesc	pg_user_attr_val_dsc;
-	Datum		new_record[Natts_pg_auth_members] = {0};
-	bool		new_record_nulls[Natts_pg_auth_members] = {0};
-	HeapTuple	tuple;
+	HeapTuple	oldtuple;
+	HeapTuple	newtuple;
+	ScanKeyData	skey[2];
+	SysScanDesc	scan;
+	Datum		new_record[Natts_pg_user_attr_val] = {0};
+	Datum		rolename_datum;
+	Datum		attribute_datum;
+	Datum		value_datum;
+	bool		new_record_nulls[Natts_pg_user_attr_val] = {0};
+	bool		new_record_repl[Natts_pg_user_attr_val] = {0};
 
 	pg_user_attr_val_rel = table_open(UserAttrValRelationId, RowExclusiveLock);
 	pg_user_attr_val_dsc = RelationGetDescr(pg_user_attr_val_rel);
 
-	new_record[Anum_pg_user_attr_val_attribute - 1] = DirectFunctionCall1(namein, CStringGetDatum(attribute));
-	new_record[Anum_pg_user_attr_val_user_name - 1] = DirectFunctionCall1(namein, CStringGetDatum(rolname));
-	new_record[Anum_pg_user_attr_val_value - 1] = DirectFunctionCall1(textin, CStringGetDatum(value));
+	rolename_datum = DirectFunctionCall1(namein, CStringGetDatum(rolname));
+	attribute_datum = DirectFunctionCall1(namein, CStringGetDatum(attribute));
+	value_datum = DirectFunctionCall1(textin, CStringGetDatum(value));
 
-	tuple = heap_form_tuple(pg_user_attr_val_dsc, new_record, new_record_nulls);
-	CatalogTupleInsert(pg_user_attr_val_rel, tuple);
+	ScanKeyInit(&skey[0],  
+				Anum_pg_user_attr_val_user_name,  
+				BTEqualStrategyNumber, F_NAMEEQ,  
+				rolename_datum);  
+	ScanKeyInit(&skey[1],  
+				Anum_pg_user_attr_val_attribute,  
+				BTEqualStrategyNumber, F_NAMEEQ,  
+				attribute_datum);
+	scan = systable_beginscan(pg_user_attr_val_rel, UserAttrValPkeyIndexId, true,  
+							  NULL, 2, skey);  
+	oldtuple = systable_getnext(scan); 
 
-	/* Close pg_user_attr_val_rel, but keep lock till commit. */
+	if(HeapTupleIsValid(oldtuple)){
+		new_record[Anum_pg_user_attr_val_value - 1] = value_datum;
+		new_record_repl[Anum_pg_user_attr_val_value - 1] = true;
+		newtuple = heap_modify_tuple(oldtuple, pg_user_attr_val_dsc,
+									  new_record,
+									  new_record_nulls, new_record_repl);
+		CatalogTupleUpdate(pg_user_attr_val_rel, &newtuple->t_self, newtuple);  
+	}
+	else{
+		new_record[Anum_pg_user_attr_val_attribute - 1] = attribute_datum;
+		new_record[Anum_pg_user_attr_val_user_name - 1] = rolename_datum;
+		new_record[Anum_pg_user_attr_val_value - 1] = value_datum;
+
+		newtuple = heap_form_tuple(pg_user_attr_val_dsc, new_record, new_record_nulls);
+		CatalogTupleInsert(pg_user_attr_val_rel, newtuple);
+	}
+
+	heap_freetuple(newtuple);
+	systable_endscan(scan);
 	table_close(pg_user_attr_val_rel, NoLock);
 }
 
