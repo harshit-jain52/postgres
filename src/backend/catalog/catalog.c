@@ -35,6 +35,7 @@
 #include "catalog/pg_parameter_acl.h"
 #include "catalog/pg_replication_origin.h"
 #include "catalog/pg_resource_attr.h"
+#include "catalog/pg_resource_attr_val.h"
 #include "catalog/pg_seclabel.h"
 #include "catalog/pg_shdepend.h"
 #include "catalog/pg_shdescription.h"
@@ -314,6 +315,7 @@ IsSharedRelation(Oid relationId)
 		relationId == ParameterAclRelationId ||
 		relationId == ReplicationOriginRelationId ||
 		relationId == ResourceAttrRelationId ||
+		relationId == ResourceAttrValRelationId ||
 		relationId == SharedDependRelationId ||
 		relationId == SharedDescriptionRelationId ||
 		relationId == SharedSecLabelRelationId ||
@@ -338,6 +340,7 @@ IsSharedRelation(Oid relationId)
 		relationId == ReplicationOriginNameIndex ||
 		relationId == ResourceAttrOidIndexId ||
 		relationId == ResourceAttrAttribNameIndexId ||
+		relationId == ResourceAttrValPkeyIndexId ||
 		relationId == SharedDependDependerIndexId ||
 		relationId == SharedDependReferenceIndexId ||
 		relationId == SharedDescriptionObjIndexId ||

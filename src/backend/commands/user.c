@@ -20,12 +20,15 @@
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
+#include "catalog/namespace.h"
 #include "catalog/objectaccess.h"
 #include "catalog/pg_user_attr.h"
 #include "catalog/pg_user_attr_val.h"
 #include "catalog/pg_resource_attr.h"
+#include "catalog/pg_resource_attr_val.h"
 #include "catalog/pg_auth_members.h"
 #include "catalog/pg_authid.h"
+#include "catalog/pg_class.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_db_role_setting.h"
 #include "commands/comment.h"
@@ -2753,10 +2756,7 @@ void DropResourceAttribute(ParseState *pstate, DropResourceAttributeStmt *stmt){
 			 errmsg("DROP RESOURCE ATTRIBUTE is not supported in this version. Attribute: \"%s\"", stmt->attribute)));	 
 }
 
-void
-AddRoleUserAttr(Oid roleid, const char* rolname,
-				Oid attrid, const char* attribute,
-				const char* value)
+void AddRoleUserAttr(const char* rolname, const char* attribute, const char* value)
 {
 	Relation	pg_user_attr_val_rel;
 	TupleDesc	pg_user_attr_val_dsc;
@@ -2764,10 +2764,10 @@ AddRoleUserAttr(Oid roleid, const char* rolname,
 	HeapTuple	newtuple;
 	ScanKeyData	skey[2];
 	SysScanDesc	scan;
-	Datum		new_record[Natts_pg_user_attr_val] = {0};
 	Datum		rolename_datum;
 	Datum		attribute_datum;
 	Datum		value_datum;
+	Datum		new_record[Natts_pg_user_attr_val] = {0};
 	bool		new_record_nulls[Natts_pg_user_attr_val] = {0};
 	bool		new_record_repl[Natts_pg_user_attr_val] = {0};
 
@@ -2812,6 +2812,66 @@ AddRoleUserAttr(Oid roleid, const char* rolname,
 	table_close(pg_user_attr_val_rel, NoLock);
 }
 
+void AddRelResourceAttr(const char* relname, const char* attribute, const char* value)  
+{  
+	Relation	pg_resource_attr_val_rel;  
+	TupleDesc	pg_resource_attr_val_dsc;  
+	HeapTuple	oldtuple;  
+	HeapTuple	newtuple;  
+	ScanKeyData	skey[2];  
+	SysScanDesc	scan;
+	Datum		relname_datum;
+	Datum		attribute_datum;
+	Datum		value_datum;
+	Datum		new_record[Natts_pg_resource_attr_val] = {0};  
+	bool		new_record_nulls[Natts_pg_resource_attr_val] = {0};  
+	bool		new_record_repl[Natts_pg_resource_attr_val] = {0};  
+  
+	pg_resource_attr_val_rel = table_open(ResourceAttrValRelationId, RowExclusiveLock);  
+	pg_resource_attr_val_dsc = RelationGetDescr(pg_resource_attr_val_rel);  
+
+	relname_datum = DirectFunctionCall1(namein, CStringGetDatum(relname));
+	attribute_datum = DirectFunctionCall1(namein, CStringGetDatum(attribute));
+	value_datum = DirectFunctionCall1(textin, CStringGetDatum(value));
+
+	ScanKeyInit(&skey[0],
+				Anum_pg_resource_attr_val_resource_name,
+				BTEqualStrategyNumber, F_NAMEEQ,
+				relname_datum);
+	ScanKeyInit(&skey[1],
+				Anum_pg_resource_attr_val_attribute,
+				BTEqualStrategyNumber, F_NAMEEQ,
+				attribute_datum);
+
+	scan = systable_beginscan(pg_resource_attr_val_rel, ResourceAttrValPkeyIndexId, true,
+							  NULL, 2, skey);  
+	oldtuple = systable_getnext(scan);  
+  
+	if (HeapTupleIsValid(oldtuple))
+	{
+		new_record[Anum_pg_resource_attr_val_value - 1] = value_datum;
+		new_record_repl[Anum_pg_resource_attr_val_value - 1] = true;
+
+		newtuple = heap_modify_tuple(oldtuple, pg_resource_attr_val_dsc,
+									 new_record, new_record_nulls, new_record_repl);
+		CatalogTupleUpdate(pg_resource_attr_val_rel, &newtuple->t_self, newtuple);
+	}  
+	else
+	{
+		new_record[Anum_pg_resource_attr_val_resource_name - 1] = relname_datum;
+		new_record[Anum_pg_resource_attr_val_attribute - 1] = attribute_datum;
+		new_record[Anum_pg_resource_attr_val_value - 1] = value_datum;
+
+		newtuple = heap_form_tuple(pg_resource_attr_val_dsc, new_record, new_record_nulls);
+		CatalogTupleInsert(pg_resource_attr_val_rel, newtuple);
+		heap_freetuple(newtuple);  
+	}
+
+	heap_freetuple(newtuple);  
+	systable_endscan(scan);  
+	table_close(pg_resource_attr_val_rel, NoLock);  
+}
+
 void GrantUserAttribute(ParseState *pstate, GrantUserAttributeStmt *stmt){
 	Relation	pg_authid_rel;
 	Relation	pg_user_attr_rel;
@@ -2836,7 +2896,7 @@ void GrantUserAttribute(ParseState *pstate, GrantUserAttributeStmt *stmt){
 
 		roleid = get_role_oid(rolename, false);
 		attrid = get_user_attr_oid(stmt->attribute, false);
-		AddRoleUserAttr(roleid, rolename, attrid, stmt->attribute, stmt->value);
+		AddRoleUserAttr(rolename, stmt->attribute, stmt->value);
 	}
 
 	/*
@@ -2847,10 +2907,34 @@ void GrantUserAttribute(ParseState *pstate, GrantUserAttributeStmt *stmt){
 }
 
 void GrantResourceAttribute(ParseState *pstate, GrantResourceAttributeStmt *stmt){
-	/* This function is not implemented in this version */
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("GRANT RESOURCE ATTRIBUTE is not supported in this version. Attribute: \"%s\", Value: \"%s\"", stmt->attribute, stmt->value)));
+	Relation	pg_class_rel;  
+	Relation	pg_resource_attr_rel;  
+	ListCell   *item;  
+  
+	pg_class_rel = table_open(RelationRelationId, AccessShareLock);  
+	pg_resource_attr_rel = table_open(ResourceAttrRelationId, AccessShareLock);  
+  
+	foreach(item, stmt->grantees)  
+	{  
+		RangeVar   *relvar = (RangeVar *) lfirst(item);  
+		char	   *relname = relvar->relname;  
+		Oid			relid;  
+		Oid			attrid;  
+		
+		/*
+		 *TODO: check for permissions for grantor
+		 */
+
+		relid = RangeVarGetRelid(relvar, NoLock, false);
+		attrid = get_resource_attr_oid(stmt->attribute, false);
+		AddRelResourceAttr(relname, stmt->attribute, stmt->value);
+	}
+
+	/*
+	 * Close relations, but keep lock till commit.  
+	 */  
+	table_close(pg_class_rel, NoLock);  
+	table_close(pg_resource_attr_rel, NoLock); 
 }
 
 void RevokeUserAttribute(ParseState *pstate, RevokeUserAttributeStmt *stmt){
