@@ -85,7 +85,8 @@ CATALOG_HEADERS := \
 	pg_resource_attr.h \
 	pg_user_attr.h \
 	pg_user_attr_val.h \
-	pg_resource_attr_val.h
+	pg_resource_attr_val.h \
+	pg_abac_rule.h
 
 GENERATED_HEADERS := $(CATALOG_HEADERS:%.h=%_d.h)
 

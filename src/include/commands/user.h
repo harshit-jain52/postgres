@@ -48,7 +48,7 @@ extern void GrantUserAttribute(ParseState *pstate, GrantUserAttributeStmt *stmt)
 extern void GrantResourceAttribute(ParseState *pstate, GrantResourceAttributeStmt *stmt);
 extern void RevokeUserAttribute(ParseState *pstate, RevokeUserAttributeStmt *stmt);
 extern void RevokeResourceAttribute(ParseState *pstate, RevokeResourceAttributeStmt *stmt);
-extern Oid CreateAbacRule(ParseState *pstate, CreateAbacRuleStmt *stmt);
+extern void CreateAbacRule(ParseState *pstate, CreateAbacRuleStmt *stmt);
 extern void DropAbacRule(ParseState *pstate, DropAbacRuleStmt *stmt);
 
 #endif							/* USER_H */

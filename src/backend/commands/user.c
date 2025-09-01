@@ -26,6 +26,7 @@
 #include "catalog/pg_user_attr_val.h"
 #include "catalog/pg_resource_attr.h"
 #include "catalog/pg_resource_attr_val.h"
+#include "catalog/pg_abac_rule.h"
 #include "catalog/pg_auth_members.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_class.h"
@@ -2950,13 +2951,103 @@ void RevokeResourceAttribute(ParseState *pstate, RevokeResourceAttributeStmt *st
 			 errmsg("REVOKE RESOURCE ATTRIBUTE is not supported in this version. Attribute: \"%s\", Value: \"%s\"", stmt->attribute, stmt->value)));
 }
 
-Oid
-CreateAbacRule(ParseState *pstate, CreateAbacRuleStmt *stmt){
-	/* This function is not implemented in this version */
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("CREATE ABAC RULE is not supported in this version. Rule: \"%s\"", stmt->rule_name)));
-	return InvalidOid; /* Unreachable, but keeps compiler happy */
+// TODO: handle privileges
+void
+CreateAbacRule(ParseState *pstate, CreateAbacRuleStmt *stmt)  
+{  
+	Relation	pg_abac_rule_rel;    
+	TupleDesc	pg_abac_rule_dsc;    
+	HeapTuple	tuple;  
+	ScanKeyData	skey[1];  
+	SysScanDesc	scan;  
+	Datum		values[Natts_pg_abac_rule];    
+	bool		nulls[Natts_pg_abac_rule];    
+	Datum		rulename_datum;  
+	Datum		is_user_datum;  
+	List	   *user_attrs;    
+	List	   *resource_attrs;    
+	ListCell   *lc;    
+    
+	/* Extract user and resource attribute clauses */    
+	user_attrs = (List *) linitial(stmt->attribute_clause);    
+	resource_attrs = (List *) lsecond(stmt->attribute_clause);    
+	rulename_datum = DirectFunctionCall1(namein, CStringGetDatum(stmt->rule_name));
+    
+	pg_abac_rule_rel = table_open(AbacRuleRelationId, RowExclusiveLock);    
+	pg_abac_rule_dsc = RelationGetDescr(pg_abac_rule_rel);    
+  
+	/* Check if rule with same name already exists */  
+	ScanKeyInit(&skey[0],  
+				Anum_pg_abac_rule_rulename,  
+				BTEqualStrategyNumber, F_NAMEEQ,  
+				rulename_datum);  
+  
+	scan = systable_beginscan(pg_abac_rule_rel, AbacRulePkeyIndexId, true,  
+							  NULL, 1, skey);  
+	  
+	if (HeapTupleIsValid(systable_getnext(scan)))  {  
+		systable_endscan(scan);  
+		table_close(pg_abac_rule_rel, NoLock);  
+		ereport(ERROR,  
+				(errcode(ERRCODE_DUPLICATE_OBJECT),  
+				 errmsg("ABAC rule \"%s\" already exists", stmt->rule_name)));  
+	}
+	  
+	systable_endscan(scan);
+
+
+	/* Process user attributes */  
+	if (user_attrs != NIL)  {  
+		is_user_datum = BoolGetDatum(true);
+		foreach(lc, user_attrs)  {  
+			DefElem    *def = (DefElem *) lfirst(lc);  
+			char	   *attr_name = def->defname;  
+			char	   *attr_value = strVal(def->arg);  
+			Oid			attr_id;  
+  
+			attr_id = get_user_attr_oid(attr_name, false);  
+  
+			memset(values, 0, sizeof(values));  
+			memset(nulls, false, sizeof(nulls));  
+  
+			values[Anum_pg_abac_rule_rulename - 1] = rulename_datum;
+			values[Anum_pg_abac_rule_attr_id - 1] = ObjectIdGetDatum(attr_id);  
+			values[Anum_pg_abac_rule_is_user_attr - 1] = is_user_datum;  
+			values[Anum_pg_abac_rule_value - 1] = CStringGetTextDatum(attr_value);  
+  
+			tuple = heap_form_tuple(pg_abac_rule_dsc, values, nulls);  
+			CatalogTupleInsert(pg_abac_rule_rel, tuple);  
+			heap_freetuple(tuple);  
+		}  
+	}  
+  
+	/* Process resource attributes */  
+	if (resource_attrs != NIL)  {
+		is_user_datum = BoolGetDatum(false);
+		foreach(lc, resource_attrs)  {
+			DefElem    *def = (DefElem *) lfirst(lc);
+			char	   *attr_name = def->defname;
+			char	   *attr_value = strVal(def->arg);
+			Oid			attr_id;  
+  
+			attr_id = get_resource_attr_oid(attr_name, false);  
+  
+			memset(values, 0, sizeof(values));  
+			memset(nulls, false, sizeof(nulls));  
+  
+			values[Anum_pg_abac_rule_rulename - 1] = rulename_datum;
+			values[Anum_pg_abac_rule_attr_id - 1] = ObjectIdGetDatum(attr_id);
+			values[Anum_pg_abac_rule_is_user_attr - 1] = is_user_datum;
+			values[Anum_pg_abac_rule_value - 1] = CStringGetTextDatum(attr_value);
+
+			tuple = heap_form_tuple(pg_abac_rule_dsc, values, nulls);
+			CatalogTupleInsert(pg_abac_rule_rel, tuple);
+			heap_freetuple(tuple);
+		}  
+	}  
+  
+	/* Close the catalog */  
+	table_close(pg_abac_rule_rel, NoLock);    
 }
 
 void DropAbacRule(ParseState *pstate, DropAbacRuleStmt *stmt){

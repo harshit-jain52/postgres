@@ -26,6 +26,7 @@
 #include "access/transam.h"
 #include "catalog/catalog.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_abac_rule.h"
 #include "catalog/pg_auth_members.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_database.h"
@@ -308,7 +309,8 @@ bool
 IsSharedRelation(Oid relationId)
 {
 	/* These are the shared catalogs (look for BKI_SHARED_RELATION) */
-	if (relationId == AuthIdRelationId ||
+	if (relationId == AbacRuleRelationId ||
+		relationId == AuthIdRelationId ||
 		relationId == AuthMemRelationId ||
 		relationId == DatabaseRelationId ||
 		relationId == DbRoleSettingRelationId ||
@@ -325,7 +327,8 @@ IsSharedRelation(Oid relationId)
 		relationId == UserAttrValRelationId)
 		return true;
 	/* These are their indexes */
-	if (relationId == AuthIdOidIndexId ||
+	if (relationId == AbacRulePkeyIndexId ||
+		relationId == AuthIdOidIndexId ||
 		relationId == AuthIdRolnameIndexId ||
 		relationId == AuthMemMemRoleIndexId ||
 		relationId == AuthMemRoleMemIndexId ||
