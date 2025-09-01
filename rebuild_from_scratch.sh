@@ -4,6 +4,7 @@ PG_USER="postgres"
 
 ./stop_server.sh
 
+./configure
 make clean
 make -j 8
 sudo make install

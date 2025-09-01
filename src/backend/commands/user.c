@@ -2756,7 +2756,7 @@ void DropResourceAttribute(ParseState *pstate, DropResourceAttributeStmt *stmt){
 			 errmsg("DROP RESOURCE ATTRIBUTE is not supported in this version. Attribute: \"%s\"", stmt->attribute)));	 
 }
 
-void AddRoleUserAttr(const char* rolname, const char* attribute, const char* value)
+void AddRoleUserAttr(Oid roleid, Oid attrid, const char* value)
 {
 	Relation	pg_user_attr_val_rel;
 	TupleDesc	pg_user_attr_val_dsc;
@@ -2764,8 +2764,8 @@ void AddRoleUserAttr(const char* rolname, const char* attribute, const char* val
 	HeapTuple	newtuple;
 	ScanKeyData	skey[2];
 	SysScanDesc	scan;
-	Datum		rolename_datum;
-	Datum		attribute_datum;
+	Datum		roleid_datum;
+	Datum		attrid_datum;
 	Datum		value_datum;
 	Datum		new_record[Natts_pg_user_attr_val] = {0};
 	bool		new_record_nulls[Natts_pg_user_attr_val] = {0};
@@ -2774,18 +2774,18 @@ void AddRoleUserAttr(const char* rolname, const char* attribute, const char* val
 	pg_user_attr_val_rel = table_open(UserAttrValRelationId, RowExclusiveLock);
 	pg_user_attr_val_dsc = RelationGetDescr(pg_user_attr_val_rel);
 
-	rolename_datum = DirectFunctionCall1(namein, CStringGetDatum(rolname));
-	attribute_datum = DirectFunctionCall1(namein, CStringGetDatum(attribute));
+	roleid_datum = ObjectIdGetDatum(roleid);
+	attrid_datum = ObjectIdGetDatum(attrid);
 	value_datum = DirectFunctionCall1(textin, CStringGetDatum(value));
 
-	ScanKeyInit(&skey[0],  
-				Anum_pg_user_attr_val_user_name,  
-				BTEqualStrategyNumber, F_NAMEEQ,  
-				rolename_datum);  
-	ScanKeyInit(&skey[1],  
-				Anum_pg_user_attr_val_attribute,  
-				BTEqualStrategyNumber, F_NAMEEQ,  
-				attribute_datum);
+	ScanKeyInit(&skey[0],
+				Anum_pg_user_attr_val_user_id,
+				BTEqualStrategyNumber, F_OIDEQ,
+				roleid_datum);
+	ScanKeyInit(&skey[1],
+				Anum_pg_user_attr_val_attr_id,
+				BTEqualStrategyNumber, F_OIDEQ,
+				attrid_datum);
 	scan = systable_beginscan(pg_user_attr_val_rel, UserAttrValPkeyIndexId, true,  
 							  NULL, 2, skey);  
 	oldtuple = systable_getnext(scan); 
@@ -2799,8 +2799,8 @@ void AddRoleUserAttr(const char* rolname, const char* attribute, const char* val
 		CatalogTupleUpdate(pg_user_attr_val_rel, &newtuple->t_self, newtuple);  
 	}
 	else{
-		new_record[Anum_pg_user_attr_val_attribute - 1] = attribute_datum;
-		new_record[Anum_pg_user_attr_val_user_name - 1] = rolename_datum;
+		new_record[Anum_pg_user_attr_val_attr_id - 1] = attrid_datum;
+		new_record[Anum_pg_user_attr_val_user_id - 1] = roleid_datum;
 		new_record[Anum_pg_user_attr_val_value - 1] = value_datum;
 
 		newtuple = heap_form_tuple(pg_user_attr_val_dsc, new_record, new_record_nulls);
@@ -2812,16 +2812,16 @@ void AddRoleUserAttr(const char* rolname, const char* attribute, const char* val
 	table_close(pg_user_attr_val_rel, NoLock);
 }
 
-void AddRelResourceAttr(const char* relname, const char* attribute, const char* value)  
-{  
-	Relation	pg_resource_attr_val_rel;  
-	TupleDesc	pg_resource_attr_val_dsc;  
-	HeapTuple	oldtuple;  
-	HeapTuple	newtuple;  
+void AddRelResourceAttr(Oid relid, Oid attrid, const char* value)
+{
+	Relation	pg_resource_attr_val_rel;
+	TupleDesc	pg_resource_attr_val_dsc;
+	HeapTuple	oldtuple;
+	HeapTuple	newtuple;
 	ScanKeyData	skey[2];  
 	SysScanDesc	scan;
-	Datum		relname_datum;
-	Datum		attribute_datum;
+	Datum		relid_datum;
+	Datum		attrid_datum;
 	Datum		value_datum;
 	Datum		new_record[Natts_pg_resource_attr_val] = {0};  
 	bool		new_record_nulls[Natts_pg_resource_attr_val] = {0};  
@@ -2830,18 +2830,18 @@ void AddRelResourceAttr(const char* relname, const char* attribute, const char* 
 	pg_resource_attr_val_rel = table_open(ResourceAttrValRelationId, RowExclusiveLock);  
 	pg_resource_attr_val_dsc = RelationGetDescr(pg_resource_attr_val_rel);  
 
-	relname_datum = DirectFunctionCall1(namein, CStringGetDatum(relname));
-	attribute_datum = DirectFunctionCall1(namein, CStringGetDatum(attribute));
+	relid_datum = ObjectIdGetDatum(relid);
+	attrid_datum = ObjectIdGetDatum(attrid);
 	value_datum = DirectFunctionCall1(textin, CStringGetDatum(value));
 
 	ScanKeyInit(&skey[0],
-				Anum_pg_resource_attr_val_resource_name,
-				BTEqualStrategyNumber, F_NAMEEQ,
-				relname_datum);
+				Anum_pg_resource_attr_val_resource_id,
+				BTEqualStrategyNumber, F_OIDEQ,
+				relid_datum);
 	ScanKeyInit(&skey[1],
-				Anum_pg_resource_attr_val_attribute,
-				BTEqualStrategyNumber, F_NAMEEQ,
-				attribute_datum);
+				Anum_pg_resource_attr_val_attr_id,
+				BTEqualStrategyNumber, F_OIDEQ,
+				attrid_datum);
 
 	scan = systable_beginscan(pg_resource_attr_val_rel, ResourceAttrValPkeyIndexId, true,
 							  NULL, 2, skey);  
@@ -2858,13 +2858,12 @@ void AddRelResourceAttr(const char* relname, const char* attribute, const char* 
 	}  
 	else
 	{
-		new_record[Anum_pg_resource_attr_val_resource_name - 1] = relname_datum;
-		new_record[Anum_pg_resource_attr_val_attribute - 1] = attribute_datum;
+		new_record[Anum_pg_resource_attr_val_resource_id - 1] = relid_datum;
+		new_record[Anum_pg_resource_attr_val_attr_id - 1] = attrid_datum;
 		new_record[Anum_pg_resource_attr_val_value - 1] = value_datum;
 
 		newtuple = heap_form_tuple(pg_resource_attr_val_dsc, new_record, new_record_nulls);
 		CatalogTupleInsert(pg_resource_attr_val_rel, newtuple);
-		heap_freetuple(newtuple);  
 	}
 
 	heap_freetuple(newtuple);  
@@ -2896,7 +2895,7 @@ void GrantUserAttribute(ParseState *pstate, GrantUserAttributeStmt *stmt){
 
 		roleid = get_role_oid(rolename, false);
 		attrid = get_user_attr_oid(stmt->attribute, false);
-		AddRoleUserAttr(rolename, stmt->attribute, stmt->value);
+		AddRoleUserAttr(roleid, attrid, stmt->value);
 	}
 
 	/*
@@ -2927,7 +2926,7 @@ void GrantResourceAttribute(ParseState *pstate, GrantResourceAttributeStmt *stmt
 
 		relid = RangeVarGetRelid(relvar, NoLock, false);
 		attrid = get_resource_attr_oid(stmt->attribute, false);
-		AddRelResourceAttr(relname, stmt->attribute, stmt->value);
+		AddRelResourceAttr(relid, attrid, stmt->value);
 	}
 
 	/*

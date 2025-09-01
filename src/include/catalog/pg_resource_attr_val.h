@@ -24,8 +24,8 @@
  */
 CATALOG(pg_resource_attr_val, 8760, ResourceAttrValRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OID(8763, ResourceAttrValRelation_Rowtype_Id) BKI_SCHEMA_MACRO
 {
-    NameData resource_name BKI_LOOKUP(pg_class);    /* foreign key to relname in pg_class */
-    NameData attribute BKI_LOOKUP(pg_resource_attr); /* foreign key to attrib_name in pg_resource_attr */
+    Oid resource_id BKI_LOOKUP(pg_class);      /* foreign key to oid in pg_class */
+    Oid attr_id BKI_LOOKUP(pg_resource_attr);   /* foreign key to oid in pg_resource_attr */
 
     /* remaining fields may be null; use heap_getattr to read them! */
 #ifdef CATALOG_VARLEN /* variable-length fields start here */
@@ -41,7 +41,7 @@ FormData_pg_resource_attr_val;
  */
 typedef FormData_pg_resource_attr_val *Form_pg_resource_attr_val;
 
-DECLARE_UNIQUE_INDEX_PKEY(pg_resource_attr_val_pkey, 8761, ResourceAttrValPkeyIndexId, pg_resource_attr_val, btree(resource_name name_ops, attribute name_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_resource_attr_val_pkey, 8761, ResourceAttrValPkeyIndexId, pg_resource_attr_val, btree(resource_id oid_ops, attr_id oid_ops));
 
 MAKE_SYSCACHE(RESOURCEATTRVALRESOURCEATTR, pg_resource_attr_val_pkey, 8);
 

@@ -24,8 +24,8 @@
  */
 CATALOG(pg_user_attr_val, 8770, UserAttrValRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OID(8773, UserAttrValRelation_Rowtype_Id) BKI_SCHEMA_MACRO
 {
-    NameData user_name BKI_LOOKUP(pg_authid);    /* foreign key to rolname in pg_authid */
-    NameData attribute BKI_LOOKUP(pg_user_attr); /* foreign key to attrib_name in pg_user_attr */
+    Oid user_id BKI_LOOKUP(pg_authid);      /* foreign key to oid in pg_authid */  
+    Oid attr_id BKI_LOOKUP(pg_user_attr);   /* foreign key to oid in pg_user_attr */
 
     /* remaining fields may be null; use heap_getattr to read them! */
 #ifdef CATALOG_VARLEN /* variable-length fields start here */
@@ -41,7 +41,7 @@ FormData_pg_user_attr_val;
  */
 typedef FormData_pg_user_attr_val *Form_pg_user_attr_val;
 
-DECLARE_UNIQUE_INDEX_PKEY(pg_user_attr_val_pkey, 8771, UserAttrValPkeyIndexId, pg_user_attr_val, btree(user_name name_ops, attribute name_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_user_attr_val_pkey, 8771, UserAttrValPkeyIndexId, pg_user_attr_val, btree(user_id oid_ops, attr_id oid_ops));
 
 MAKE_SYSCACHE(USERATTRVALUSERATTR, pg_user_attr_val_pkey, 8);
 
