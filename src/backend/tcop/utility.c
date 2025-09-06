@@ -24,6 +24,7 @@
 #include "catalog/pg_authid.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/toasting.h"
+#include "commands/abac.h"
 #include "commands/alter.h"
 #include "commands/async.h"
 #include "commands/cluster.h"

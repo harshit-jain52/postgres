@@ -40,15 +40,4 @@ extern bool check_createrole_self_grant(char **newval, void **extra,
 										GucSource source);
 extern void assign_createrole_self_grant(const char *newval, void *extra);
 
-extern Oid CreateUserAttribute(ParseState *pstate, CreateUserAttributeStmt *stmt);
-extern Oid CreateResourceAttribute(ParseState *pstate, CreateResourceAttributeStmt *stmt);
-extern void DropUserAttribute(ParseState *pstate, DropUserAttributeStmt *stmt);
-extern void DropResourceAttribute(ParseState *pstate, DropResourceAttributeStmt *stmt);
-extern void GrantUserAttribute(ParseState *pstate, GrantUserAttributeStmt *stmt);
-extern void GrantResourceAttribute(ParseState *pstate, GrantResourceAttributeStmt *stmt);
-extern void RevokeUserAttribute(ParseState *pstate, RevokeUserAttributeStmt *stmt);
-extern void RevokeResourceAttribute(ParseState *pstate, RevokeResourceAttributeStmt *stmt);
-extern void CreateAbacRule(ParseState *pstate, CreateAbacRuleStmt *stmt);
-extern void DropAbacRule(ParseState *pstate, DropAbacRuleStmt *stmt);
-
 #endif							/* USER_H */
