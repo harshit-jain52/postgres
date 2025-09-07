@@ -24,6 +24,7 @@
 #include "catalog/pg_resource_attr.h"
 #include "catalog/pg_resource_attr_val.h"
 #include "catalog/pg_abac_rule.h"
+#include "catalog/pg_abac_rule_priv.h"
 #include "catalog/pg_auth_members.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_class.h"
@@ -317,10 +318,7 @@ void AddRelResourceAttr(Oid relid, Oid attrid, const char* value)
 void GrantUserAttribute(ParseState *pstate, GrantUserAttributeStmt *stmt){
 	Relation	pg_authid_rel;
 	Relation	pg_user_attr_rel;
-	List	   *grantee_ids;
 	ListCell   *item;
-
-	grantee_ids = roleSpecsToIds(stmt->grantees);
 
 	/*
 	 *TODO: check for permissions for grantor
@@ -359,7 +357,6 @@ void GrantResourceAttribute(ParseState *pstate, GrantResourceAttributeStmt *stmt
 	foreach(item, stmt->grantees)  
 	{  
 		RangeVar   *relvar = (RangeVar *) lfirst(item);  
-		char	   *relname = relvar->relname;  
 		Oid			relid;  
 		Oid			attrid;  
 		
@@ -393,103 +390,119 @@ void RevokeResourceAttribute(ParseState *pstate, RevokeResourceAttributeStmt *st
 			 errmsg("REVOKE RESOURCE ATTRIBUTE is not supported in this version. Attribute: \"%s\", Value: \"%s\"", stmt->attribute, stmt->value)));
 }
 
-// TODO: handle privileges
+void AddRuleAttr(Oid ruleid, Oid attrid, bool is_user_attr, const char* value)
+{
+	Relation	pg_abac_rule_rel;
+	TupleDesc	pg_abac_rule_dsc;
+	HeapTuple	tuple;
+	Datum		new_record[Natts_pg_abac_rule] = {0};
+	bool		new_record_nulls[Natts_pg_abac_rule] = {0};
+
+	pg_abac_rule_rel = table_open(AbacRuleRelationId, RowExclusiveLock);
+	pg_abac_rule_dsc = RelationGetDescr(pg_abac_rule_rel);
+
+	new_record[Anum_pg_abac_rule_rule_id - 1] = ObjectIdGetDatum(ruleid);
+	new_record[Anum_pg_abac_rule_attr_id - 1] = ObjectIdGetDatum(attrid);
+	new_record[Anum_pg_abac_rule_is_user_attr - 1] = BoolGetDatum(is_user_attr);
+	new_record[Anum_pg_abac_rule_value - 1] = CStringGetTextDatum(value);
+
+	tuple = heap_form_tuple(pg_abac_rule_dsc, new_record, new_record_nulls);
+	CatalogTupleInsert(pg_abac_rule_rel, tuple);
+
+	heap_freetuple(tuple);
+	table_close(pg_abac_rule_rel, NoLock);
+}
+
+AclMode
+string_to_privilege(const char *privname){
+	if (strcmp(privname, "insert") == 0)
+		return ACL_INSERT;
+	if (strcmp(privname, "select") == 0)
+		return ACL_SELECT;
+	if (strcmp(privname, "update") == 0)
+		return ACL_UPDATE;
+	if (strcmp(privname, "delete") == 0)
+		return ACL_DELETE;
+	ereport(ERROR,
+			(errcode(ERRCODE_SYNTAX_ERROR),
+			 errmsg("unrecognized privilege type \"%s\"", privname)));
+	return 0;
+}
+
 void
 CreateAbacRule(ParseState *pstate, CreateAbacRuleStmt *stmt)  
 {  
-	Relation	pg_abac_rule_rel;    
-	TupleDesc	pg_abac_rule_dsc;    
+	Relation	pg_abac_rule_priv_rel;
+	TupleDesc	pg_abac_rule_priv_dsc;
 	HeapTuple	tuple;  
-	ScanKeyData	skey[1];  
-	SysScanDesc	scan;  
-	Datum		values[Natts_pg_abac_rule];    
-	bool		nulls[Natts_pg_abac_rule];    
-	Datum		rulename_datum;  
-	Datum		is_user_datum;  
+	Datum		new_record[Natts_pg_abac_rule_priv] = {0};
+	bool		new_record_nulls[Natts_pg_abac_rule_priv] = {0};
 	List	   *user_attrs;    
 	List	   *resource_attrs;    
-	ListCell   *lc;    
-    
-	/* Extract user and resource attribute clauses */    
-	user_attrs = (List *) linitial(stmt->attribute_clause);    
-	resource_attrs = (List *) lsecond(stmt->attribute_clause);    
-	rulename_datum = DirectFunctionCall1(namein, CStringGetDatum(stmt->rule_name));
-    
-	pg_abac_rule_rel = table_open(AbacRuleRelationId, RowExclusiveLock);    
-	pg_abac_rule_dsc = RelationGetDescr(pg_abac_rule_rel);    
-  
-	/* Check if rule with same name already exists */  
-	ScanKeyInit(&skey[0],  
-				Anum_pg_abac_rule_rulename,  
-				BTEqualStrategyNumber, F_NAMEEQ,  
-				rulename_datum);  
-  
-	scan = systable_beginscan(pg_abac_rule_rel, AbacRulePkeyIndexId, true,  
-							  NULL, 1, skey);  
-	  
-	if (HeapTupleIsValid(systable_getnext(scan)))  {  
-		systable_endscan(scan);  
-		table_close(pg_abac_rule_rel, NoLock);  
-		ereport(ERROR,  
-				(errcode(ERRCODE_DUPLICATE_OBJECT),  
-				 errmsg("ABAC rule \"%s\" already exists", stmt->rule_name)));  
+	ListCell   *lc;
+	Oid			rule_id;
+	AclMode		privilege_mask = ACL_NO_RIGHTS;
+	ListCell   *priv;
+	AccessPriv *access_priv;
+		
+	pg_abac_rule_priv_rel = table_open(AbacRulePrivRelationId, RowExclusiveLock);
+	pg_abac_rule_priv_dsc = RelationGetDescr(pg_abac_rule_priv_rel);
+
+	/* Check if rule with same name already exists */
+	if (OidIsValid(get_abac_rule_oid(stmt->rule_name, true)))
+		ereport(ERROR,
+			(errcode(ERRCODE_DUPLICATE_OBJECT),
+				errmsg("ABAC rule \"%s\" already exists",
+					stmt->rule_name)));
+	
+	rule_id = GetNewOidWithIndex(pg_abac_rule_priv_rel, AbacRulePrivOidIndexId,
+								Anum_pg_abac_rule_priv_oid);
+	
+	/* Compute privilege mask */
+	if(stmt->privileges != NIL){
+		foreach(priv, stmt->privileges){
+			access_priv = (AccessPriv *) lfirst(priv);
+			privilege_mask |= string_to_privilege(access_priv->priv_name);
+		}
 	}
-	  
-	systable_endscan(scan);
+	
+	new_record[Anum_pg_abac_rule_priv_oid - 1] = ObjectIdGetDatum(rule_id);
+	new_record[Anum_pg_abac_rule_priv_rulename - 1] = DirectFunctionCall1(namein, CStringGetDatum(stmt->rule_name));
+	new_record[Anum_pg_abac_rule_priv_privileges - 1] = Int32GetDatum(privilege_mask);
 
-
-	/* Process user attributes */  
+	tuple = heap_form_tuple(pg_abac_rule_priv_dsc, new_record, new_record_nulls);    
+	CatalogTupleInsert(pg_abac_rule_priv_rel, tuple);
+	heap_freetuple(tuple);  
+	
+	/* Process user attributes */
+	user_attrs = (List *) linitial(stmt->attribute_clause);
 	if (user_attrs != NIL)  {  
-		is_user_datum = BoolGetDatum(true);
 		foreach(lc, user_attrs)  {  
 			DefElem    *def = (DefElem *) lfirst(lc);  
 			char	   *attr_name = def->defname;  
 			char	   *attr_value = strVal(def->arg);  
 			Oid			attr_id;  
-  
-			attr_id = get_user_attr_oid(attr_name, false);  
-  
-			memset(values, 0, sizeof(values));  
-			memset(nulls, false, sizeof(nulls));  
-  
-			values[Anum_pg_abac_rule_rulename - 1] = rulename_datum;
-			values[Anum_pg_abac_rule_attr_id - 1] = ObjectIdGetDatum(attr_id);  
-			values[Anum_pg_abac_rule_is_user_attr - 1] = is_user_datum;  
-			values[Anum_pg_abac_rule_value - 1] = CStringGetTextDatum(attr_value);  
-  
-			tuple = heap_form_tuple(pg_abac_rule_dsc, values, nulls);  
-			CatalogTupleInsert(pg_abac_rule_rel, tuple);  
-			heap_freetuple(tuple);  
-		}  
-	}  
-  
-	/* Process resource attributes */  
+			
+			attr_id = get_user_attr_oid(attr_name, false);
+			AddRuleAttr(rule_id, attr_id, true, attr_value);
+		}
+	}
+	
+	/* Process resource attributes */
+	resource_attrs = (List *) lsecond(stmt->attribute_clause);    
 	if (resource_attrs != NIL)  {
-		is_user_datum = BoolGetDatum(false);
 		foreach(lc, resource_attrs)  {
 			DefElem    *def = (DefElem *) lfirst(lc);
 			char	   *attr_name = def->defname;
 			char	   *attr_value = strVal(def->arg);
 			Oid			attr_id;  
-  
+			
 			attr_id = get_resource_attr_oid(attr_name, false);  
-  
-			memset(values, 0, sizeof(values));  
-			memset(nulls, false, sizeof(nulls));  
-  
-			values[Anum_pg_abac_rule_rulename - 1] = rulename_datum;
-			values[Anum_pg_abac_rule_attr_id - 1] = ObjectIdGetDatum(attr_id);
-			values[Anum_pg_abac_rule_is_user_attr - 1] = is_user_datum;
-			values[Anum_pg_abac_rule_value - 1] = CStringGetTextDatum(attr_value);
-
-			tuple = heap_form_tuple(pg_abac_rule_dsc, values, nulls);
-			CatalogTupleInsert(pg_abac_rule_rel, tuple);
-			heap_freetuple(tuple);
+			AddRuleAttr(rule_id, attr_id, false, attr_value);
 		}  
-	}  
-  
-	/* Close the catalog */  
-	table_close(pg_abac_rule_rel, NoLock);    
+	}
+
+	table_close(pg_abac_rule_priv_rel, NoLock);
 }
 
 void DropAbacRule(ParseState *pstate, DropAbacRuleStmt *stmt){

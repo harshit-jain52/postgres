@@ -73,7 +73,8 @@ catalog_headers = [
   'pg_user_attr.h',
   'pg_user_attr_val.h',
   'pg_resource_attr_val.h',
-  'pg_abac_rule.h'
+  'pg_abac_rule.h',
+  'pg_abac_rule_priv.h'
 ]
 
 # The .dat files we need can just be listed alphabetically.

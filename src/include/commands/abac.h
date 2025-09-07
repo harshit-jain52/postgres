@@ -30,6 +30,7 @@ void AddRelResourceAttr(Oid relid, Oid attrid, const char* value);
 extern void RevokeResourceAttribute(ParseState *pstate, RevokeResourceAttributeStmt *stmt);
 
 extern void CreateAbacRule(ParseState *pstate, CreateAbacRuleStmt *stmt);
+void AddRuleAttr(Oid ruleid, Oid attrid, bool is_user_attr, const char* value);
 extern void DropAbacRule(ParseState *pstate, DropAbacRuleStmt *stmt);
 
 #endif							/* ABAC_H */

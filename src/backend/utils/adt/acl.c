@@ -33,6 +33,7 @@
 #include "catalog/pg_type.h"
 #include "catalog/pg_user_attr.h"
 #include "catalog/pg_resource_attr.h"
+#include "catalog/pg_abac_rule_priv.h"
 #include "commands/dbcommands.h"
 #include "commands/proclang.h"
 #include "commands/tablespace.h"
@@ -5754,5 +5755,25 @@ get_resource_attr_oid(const char *attrname, bool missing_ok)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("ABAC resource attribute \"%s\" does not exist", attrname)));
+	return oid;
+}
+
+/*
+ * get_abac_rule_oid - Given a ABAC rule name, look up the rule's OID.
+ *
+ * If missing_ok is false, throw an error if rule name not found.  If
+ * true, just return InvalidOid.
+ */
+Oid
+get_abac_rule_oid(const char *rulename, bool missing_ok)
+{
+	Oid	oid;
+
+	oid = GetSysCacheOid1(ABACRULEPRIVRULENAME, Anum_pg_abac_rule_priv_oid,
+						  CStringGetDatum(rulename));
+	if (!OidIsValid(oid) && !missing_ok)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("ABAC rule \"%s\" does not exist", rulename)));
 	return oid;
 }

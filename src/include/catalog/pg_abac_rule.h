@@ -24,7 +24,7 @@
  */  
 CATALOG(pg_abac_rule,8780,AbacRuleRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OID(8783,AbacRuleRelation_Rowtype_Id) BKI_SCHEMA_MACRO  
 {  
-	NameData	rulename;		/* name of the ABAC rule */  
+	Oid			rule_id BKI_LOOKUP(pg_abac_rule_priv);	/* FK to pg_abac_rule_priv */  
 	Oid			attr_id;		/* either pg_user_attr.oid or pg_resource_attr.oid */  
 	bool		is_user_attr;	/* true if attr_id references pg_user_attr, false if pg_resource_attr */  
   
@@ -41,7 +41,7 @@ CATALOG(pg_abac_rule,8780,AbacRuleRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OI
  */  
 typedef FormData_pg_abac_rule *Form_pg_abac_rule;  
   
-DECLARE_UNIQUE_INDEX_PKEY(pg_abac_rule_pkey, 8781, AbacRulePkeyIndexId, pg_abac_rule, btree(rulename name_ops, attr_id oid_ops));  
+DECLARE_UNIQUE_INDEX_PKEY(pg_abac_rule_pkey, 8781, AbacRulePkeyIndexId, pg_abac_rule, btree(rule_id oid_ops, attr_id oid_ops));  
   
 MAKE_SYSCACHE(ABACRULENAMEATTR, pg_abac_rule_pkey, 8);  
   

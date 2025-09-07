@@ -27,6 +27,7 @@
 #include "catalog/catalog.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_abac_rule.h"
+#include "catalog/pg_abac_rule_priv.h"
 #include "catalog/pg_auth_members.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_database.h"
@@ -310,6 +311,7 @@ IsSharedRelation(Oid relationId)
 {
 	/* These are the shared catalogs (look for BKI_SHARED_RELATION) */
 	if (relationId == AbacRuleRelationId ||
+		relationId == AbacRulePrivRelationId ||
 		relationId == AuthIdRelationId ||
 		relationId == AuthMemRelationId ||
 		relationId == DatabaseRelationId ||
@@ -328,6 +330,8 @@ IsSharedRelation(Oid relationId)
 		return true;
 	/* These are their indexes */
 	if (relationId == AbacRulePkeyIndexId ||
+		relationId == AbacRulePrivOidIndexId ||
+		relationId == AbacRulePrivRulenameIndexId ||
 		relationId == AuthIdOidIndexId ||
 		relationId == AuthIdRolnameIndexId ||
 		relationId == AuthMemMemRoleIndexId ||
