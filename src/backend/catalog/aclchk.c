@@ -49,6 +49,7 @@
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
+#include "catalog/pg_abac_rule.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_database.h"
@@ -62,8 +63,10 @@
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_parameter_acl.h"
 #include "catalog/pg_proc.h"
+#include "catalog/pg_resource_attr_val.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_user_attr_val.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/event_trigger.h"
@@ -4976,4 +4979,154 @@ RemoveRoleFromInitPriv(Oid roleid, Oid classid, Oid objid, int32 objsubid)
 	CommandCounterIncrement();
 
 	table_close(rel, RowExclusiveLock);
+}
+
+bool
+evaluate_abac_rule_conditions(Oid rule_id, Oid userid, Oid relid){
+	Relation    pg_abac_rule_rel;
+	TupleDesc	pg_abac_rule_dsc;
+    ScanKeyData skey[1];  
+    SysScanDesc scan;  
+    HeapTuple   tuple;  
+    bool        all_conditions_met = true;
+	Datum		value_datum;
+	text		*value_text;
+	char	   	*value_cstr;
+	bool		isnull;
+	
+	pg_abac_rule_rel = table_open(AbacRuleRelationId, AccessShareLock);
+	pg_abac_rule_dsc = RelationGetDescr(pg_abac_rule_rel);
+	
+	ScanKeyInit(&skey[0],
+                Anum_pg_abac_rule_rule_id,
+                BTEqualStrategyNumber, F_OIDEQ,
+                ObjectIdGetDatum(rule_id));
+
+    scan = systable_beginscan(pg_abac_rule_rel, AbacRulePkeyIndexId,  
+                              true, NULL, 1, skey);
+
+	while (HeapTupleIsValid(tuple = systable_getnext(scan)))  
+    {  
+        Form_pg_abac_rule rule = (Form_pg_abac_rule) GETSTRUCT(tuple);
+		value_datum = heap_getattr(tuple, Anum_pg_abac_rule_value, pg_abac_rule_dsc, &isnull);
+		if(!isnull){
+			value_text = DatumGetTextP(value_datum);
+			value_cstr = text_to_cstring(value_text);
+			if (rule->is_user_attr) {
+				if (!check_user_attribute_condition(userid, rule->attr_id, value_cstr))
+				{
+					all_conditions_met = false;
+					break;
+				}  
+			}  
+			else {  
+				if (!check_resource_attribute_condition(relid, rule->attr_id, value_cstr))  
+				{  
+					all_conditions_met = false;  
+					break;  
+				}  
+			}  
+		}
+    } 
+
+	systable_endscan(scan);  
+    table_close(pg_abac_rule_rel, AccessShareLock);  
+  
+    return all_conditions_met; 
+}
+
+bool check_user_attribute_condition(Oid userid, Oid attr_id, const char *expected_value) {
+	Relation    pg_user_attr_val_rel;
+	TupleDesc	pg_user_attr_val_dsc;
+    ScanKeyData skey[2];  
+    SysScanDesc scan;  
+    HeapTuple   tuple;  
+	Datum		value_datum;
+	text		*value_text;
+	char	   	*value_cstr;
+	bool		isnull;
+	bool		condition_met = false;
+	
+	pg_user_attr_val_rel = table_open(UserAttrValRelationId, AccessShareLock);
+	pg_user_attr_val_dsc = RelationGetDescr(pg_user_attr_val_rel);
+
+	ScanKeyInit(&skey[0],  
+                Anum_pg_user_attr_val_user_id,  
+                BTEqualStrategyNumber, F_OIDEQ,  
+                ObjectIdGetDatum(userid));  
+    ScanKeyInit(&skey[1],  
+                Anum_pg_user_attr_val_attr_id,  
+                BTEqualStrategyNumber, F_OIDEQ,  
+                ObjectIdGetDatum(attr_id));
+	scan = systable_beginscan(pg_user_attr_val_rel, UserAttrValPkeyIndexId,  
+                              true, NULL, 2, skey);
+	
+	if (HeapTupleIsValid(tuple = systable_getnext(scan)))  
+    {  
+        value_datum = heap_getattr(tuple, Anum_pg_user_attr_val_value, pg_user_attr_val_dsc, &isnull);  
+          
+        if (!isnull)  
+        {  
+            value_text = DatumGetTextP(value_datum);  
+            value_cstr = text_to_cstring(value_text);  
+              
+            if (strcmp(value_cstr, expected_value) == 0)
+                condition_met = true;
+
+            pfree(value_cstr);  
+        }  
+    }  
+  
+    systable_endscan(scan);  
+    table_close(pg_user_attr_val_rel, AccessShareLock);
+
+	return condition_met;
+}
+
+bool check_resource_attribute_condition(Oid relid, Oid attr_id, const char *expected_value) {
+	Relation    pg_res_attr_val_rel;
+	TupleDesc	pg_res_attr_val_dsc;
+	ScanKeyData skey[2];  
+	SysScanDesc scan;  
+	HeapTuple   tuple;  
+	Datum		value_datum;
+	text		*value_text;
+	char	   	*value_cstr;
+	bool		isnull;
+	bool		condition_met = false;
+	
+	pg_res_attr_val_rel = table_open(ResourceAttrValRelationId, AccessShareLock);
+	pg_res_attr_val_dsc = RelationGetDescr(pg_res_attr_val_rel);
+
+	ScanKeyInit(&skey[0],  
+				Anum_pg_resource_attr_val_resource_id,  
+				BTEqualStrategyNumber, F_OIDEQ,  
+				ObjectIdGetDatum(relid));  
+	ScanKeyInit(&skey[1],  
+				Anum_pg_resource_attr_val_attr_id,  
+				BTEqualStrategyNumber, F_OIDEQ,  
+				ObjectIdGetDatum(attr_id));
+	scan = systable_beginscan(pg_res_attr_val_rel, ResourceAttrValPkeyIndexId,  
+							  true, NULL, 2, skey);
+	
+	if (HeapTupleIsValid(tuple = systable_getnext(scan)))  
+	{  
+		value_datum = heap_getattr(tuple, Anum_pg_resource_attr_val_value, pg_res_attr_val_dsc, &isnull);  
+		  
+		if (!isnull)  
+		{  
+			value_text = DatumGetTextP(value_datum);  
+			value_cstr = text_to_cstring(value_text);  
+			  
+			if (strcmp(value_cstr, expected_value) == 0)
+				condition_met = true;
+
+			pfree(value_cstr);  
+		}  
+	}  
+  
+	systable_endscan(scan);  
+	table_close(pg_res_attr_val_rel, AccessShareLock);
+
+	return condition_met;
 }

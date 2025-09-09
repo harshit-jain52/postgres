@@ -43,6 +43,7 @@
 #include "access/xact.h"
 #include "catalog/namespace.h"
 #include "catalog/partition.h"
+#include "catalog/pg_abac_rule_priv.h"
 #include "commands/matview.h"
 #include "commands/trigger.h"
 #include "executor/executor.h"
@@ -621,7 +622,7 @@ ExecCheckPermissions(List *rangeTable, List *rteperminfos,
 		RTEPermissionInfo *perminfo = lfirst_node(RTEPermissionInfo, l);
 
 		Assert(OidIsValid(perminfo->relid));
-		result = ExecCheckOneRelPerms(perminfo);
+		result = ExecCheckOneRelPerms(perminfo) || ExecCheckOneRelAbacPolicies(perminfo);
 		if (!result)
 		{
 			if (ereport_on_violation)
@@ -824,6 +825,39 @@ ExecCheckXactReadOnly(PlannedStmt *plannedstmt)
 		PreventCommandIfParallelMode(CreateCommandName((Node *) plannedstmt));
 }
 
+/*
+ * ExecCheckOneRelAbacPolicies
+ *		Check ABAC access policies for a single relation.
+ */
+bool
+ExecCheckOneRelAbacPolicies(RTEPermissionInfo *perminfo){
+	Oid         userid;  
+    Oid         relid = perminfo->relid;  
+    AclMode     requiredPerms = perminfo->requiredPerms;
+	AclMode	 	currentPerms = ACL_NO_RIGHTS;
+	Relation    pg_abac_rule_priv_rel;
+    SysScanDesc scan;
+	HeapTuple   tuple; 
+
+	userid = OidIsValid(perminfo->checkAsUser) ?
+		perminfo->checkAsUser : GetUserId();
+
+	pg_abac_rule_priv_rel = table_open(AbacRulePrivRelationId, AccessShareLock);  
+	scan = systable_beginscan(pg_abac_rule_priv_rel, AbacRulePrivOidIndexId,   
+                              true, NULL, 0, NULL);
+	
+	while (HeapTupleIsValid(tuple = systable_getnext(scan)))  
+    {  
+        Form_pg_abac_rule_priv rule_priv = (Form_pg_abac_rule_priv) GETSTRUCT(tuple);  
+		if (evaluate_abac_rule_conditions(rule_priv->oid, userid, relid))  
+			currentPerms |= rule_priv->privileges;
+		
+    }
+	systable_endscan(scan);
+	table_close(pg_abac_rule_priv_rel, AccessShareLock);
+
+	return ((currentPerms & requiredPerms) == requiredPerms);
+}
 
 /* ----------------------------------------------------------------
  *		InitPlan

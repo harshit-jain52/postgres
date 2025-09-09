@@ -291,5 +291,8 @@ extern bool has_bypassrls_privilege(Oid roleid);
 extern Oid	get_user_attr_oid(const char *attrname, bool missing_ok);
 extern Oid	get_resource_attr_oid(const char *attrname, bool missing_ok);
 extern Oid	get_abac_rule_oid(const char *rulename, bool missing_ok);
+extern bool evaluate_abac_rule_conditions(Oid rule_id, Oid userid, Oid relid);
+extern bool check_user_attribute_condition(Oid userid, Oid attr_id, const char *expected_value);
+extern bool check_resource_attribute_condition(Oid relid, Oid attr_id, const char *expected_value);
 
 #endif							/* ACL_H */
