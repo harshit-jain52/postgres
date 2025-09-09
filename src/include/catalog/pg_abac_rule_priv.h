@@ -25,7 +25,7 @@
 CATALOG(pg_abac_rule_priv,8790,AbacRulePrivRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OID(8793,AbacRulePrivRelation_Rowtype_Id) BKI_SCHEMA_MACRO  
 {  
 	Oid			oid;			/* oid */  
-	NameData	rulename BKI_LOOKUP(pg_abac_rule);	/* Rulename */  
+	NameData	rulename;		/* Rulename */  
 	int32		privileges;		/* bitmask of privileges (AclMode) */  
 } FormData_pg_abac_rule_priv;  
   
