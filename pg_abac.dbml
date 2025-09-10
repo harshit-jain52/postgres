@@ -30,6 +30,7 @@ Table "pg_abac_rule" {
   "rule_id" "Oid" [pk, not null]
   "attr_id" "Oid" [pk, not null]
   "is_user_attr" "bool" [not null]
+  "value" "Text" [not null]
 }
 
 Table "pg_authid"{
