@@ -55,10 +55,15 @@ CreateUserAttribute(ParseState *pstate, CreateUserAttributeStmt *stmt){
 	Datum		new_record[Natts_pg_user_attr] = {0};
 	bool		new_record_nulls[Natts_pg_user_attr] = {0};
 	Oid			attrib_id;
+	Oid			currentUserId = GetUserId();
 
 	/*
-	 *TODO: check for permissions for creating attribute
+	 * Creator must be a superuser
 	 */
+	if (!superuser_arg(currentUserId))
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("must be superuser to create user attribute")));
 
 	/*
 	 * Check that the user is not trying to create an attribute in the reserved
@@ -124,10 +129,15 @@ CreateResourceAttribute(ParseState *pstate, CreateResourceAttributeStmt *stmt){
 	Datum		new_record[Natts_pg_resource_attr] = {0};
 	bool		new_record_nulls[Natts_pg_resource_attr] = {0};
 	Oid			attrib_id;
+	Oid			currentUserId = GetUserId();
 
 	/*
-	 *TODO: check for permissions for creating attribute
+	 * Creator must be a superuser
 	 */
+	if (!superuser_arg(currentUserId))
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("must be superuser to create resource attribute")));
 
 	/*
 	 * Check that the user is not trying to create an attribute in the reserved
@@ -319,10 +329,7 @@ void GrantUserAttribute(ParseState *pstate, GrantUserAttributeStmt *stmt){
 	Relation	pg_authid_rel;
 	Relation	pg_user_attr_rel;
 	ListCell   *item;
-
-	/*
-	 *TODO: check for permissions for grantor
-	 */
+	Oid			currentUserId = GetUserId();
 
 	pg_authid_rel = table_open(AuthIdRelationId, AccessShareLock);
 	pg_user_attr_rel = table_open(UserAttrRelationId, AccessShareLock);
@@ -335,6 +342,15 @@ void GrantUserAttribute(ParseState *pstate, GrantUserAttributeStmt *stmt){
 		Oid			attrid;
 
 		roleid = get_role_oid(rolename, false);
+		/*
+		* Grantor must be a superuser or the role admin
+		*/
+		if (!superuser_arg(currentUserId) && !is_admin_of_role(currentUserId, roleid))
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("must be superuser or role admin to grant attribute to role \"%s\"",
+							rolename)));
+		
 		attrid = get_user_attr_oid(stmt->attribute, false);
 		AddRoleUserAttr(roleid, attrid, stmt->value);
 	}
@@ -350,6 +366,7 @@ void GrantResourceAttribute(ParseState *pstate, GrantResourceAttributeStmt *stmt
 	Relation	pg_class_rel;  
 	Relation	pg_resource_attr_rel;  
 	ListCell   *item;  
+	Oid			currentUserId = GetUserId();
   
 	pg_class_rel = table_open(RelationRelationId, AccessShareLock);  
 	pg_resource_attr_rel = table_open(ResourceAttrRelationId, AccessShareLock);  
@@ -360,11 +377,16 @@ void GrantResourceAttribute(ParseState *pstate, GrantResourceAttributeStmt *stmt
 		Oid			relid;  
 		Oid			attrid;  
 		
-		/*
-		 *TODO: check for permissions for grantor
-		 */
-
 		relid = RangeVarGetRelid(relvar, NoLock, false);
+		/*
+		* Grantor must be a superuser or the resource owner
+		*/
+		if(!superuser_arg(currentUserId) && !object_ownercheck(RelationRelationId, relid, currentUserId))
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("must be superuser or resource owner to grant attribute to relation \"%s\"",
+							relvar->relname)));
+
 		attrid = get_resource_attr_oid(stmt->attribute, false);
 		AddRelResourceAttr(relid, attrid, stmt->value);
 	}
@@ -444,6 +466,15 @@ CreateAbacRule(ParseState *pstate, CreateAbacRuleStmt *stmt)
 	AclMode		privilege_mask = ACL_NO_RIGHTS;
 	ListCell   *priv;
 	AccessPriv *access_priv;
+	Oid			currentUserId = GetUserId();
+
+	/*
+	 * Creator must be a superuser
+	 */
+	if (!superuser_arg(currentUserId))
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("must be superuser to create user attribute")));
 		
 	pg_abac_rule_priv_rel = table_open(AbacRulePrivRelationId, RowExclusiveLock);
 	pg_abac_rule_priv_dsc = RelationGetDescr(pg_abac_rule_priv_rel);
