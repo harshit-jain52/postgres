@@ -196,18 +196,176 @@ CreateResourceAttribute(ParseState *pstate, CreateResourceAttributeStmt *stmt){
 }
 
 
-void DropUserAttribute(ParseState *pstate, DropUserAttributeStmt *stmt){
-	/* This function is not implemented in this version */
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("DROP USER ATTRIBUTE is not supported in this version. Attribute: \"%s\"", stmt->attribute)));
+void  
+DropUserAttribute(ParseState *pstate, DropUserAttributeStmt *stmt)  
+{  
+    Relation    pg_user_attr_rel;  
+    Relation    pg_user_attr_val_rel;  
+    Relation    pg_abac_rule_rel;  
+    ScanKeyData skey[1];  
+    SysScanDesc scan;  
+    HeapTuple   tuple;  
+    Oid         attr_oid;  
+    Oid         currentUserId = GetUserId();  
+    bool        attr_in_use = false;  
+  
+    /* Only superusers can drop user attributes */  
+    if (!superuser_arg(currentUserId))  
+        ereport(ERROR,  
+                (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),  
+                 errmsg("must be superuser to drop user attribute")));  
+  
+    attr_oid = get_user_attr_oid(stmt->attribute, false);  
+  
+    /* Check if attribute is used in any ABAC rules */  
+    pg_abac_rule_rel = table_open(AbacRuleRelationId, AccessShareLock);  
+  
+    ScanKeyInit(&skey[0],  
+                Anum_pg_abac_rule_attr_id,  
+                BTEqualStrategyNumber, F_OIDEQ,  
+                ObjectIdGetDatum(attr_oid));  
+  
+    scan = systable_beginscan(pg_abac_rule_rel, AbacRulePkeyIndexId, true,  
+                              NULL, 1, skey);  
+  
+    while (HeapTupleIsValid(tuple = systable_getnext(scan)))  
+    {  
+        Form_pg_abac_rule rule = (Form_pg_abac_rule) GETSTRUCT(tuple);  
+          
+        if (rule->is_user_attr)  
+        {  
+            attr_in_use = true;  
+            break;  
+        }  
+    }  
+  
+    systable_endscan(scan);  
+    table_close(pg_abac_rule_rel, AccessShareLock);  
+  
+    /* If attribute is in use, throw an error */  
+    if (attr_in_use)  
+        ereport(ERROR,  
+                (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),  
+                 errmsg("cannot drop user attribute \"%s\" because it is used in ABAC rules",  
+                        stmt->attribute),  
+                 errhint("Drop the ABAC rules using this attribute first.")));  
+  
+    /* Delete all attribute value assignments from pg_user_attr_val */  
+    pg_user_attr_val_rel = table_open(UserAttrValRelationId, RowExclusiveLock);  
+  
+    ScanKeyInit(&skey[0],  
+                Anum_pg_user_attr_val_attr_id,  
+                BTEqualStrategyNumber, F_OIDEQ,  
+                ObjectIdGetDatum(attr_oid));  
+  
+    scan = systable_beginscan(pg_user_attr_val_rel, UserAttrValPkeyIndexId, true,  
+                              NULL, 1, skey);  
+  
+    while (HeapTupleIsValid(tuple = systable_getnext(scan)))  
+        CatalogTupleDelete(pg_user_attr_val_rel, &tuple->t_self);  
+  
+    systable_endscan(scan);  
+    table_close(pg_user_attr_val_rel, RowExclusiveLock);  
+  
+    /* Delete the attribute definition from pg_user_attr */  
+    pg_user_attr_rel = table_open(UserAttrRelationId, RowExclusiveLock);  
+  
+    tuple = SearchSysCache1(USERATTRID, ObjectIdGetDatum(attr_oid));  
+    if (!HeapTupleIsValid(tuple))  
+        elog(ERROR, "cache lookup failed for user attribute %u", attr_oid);  
+  
+    CatalogTupleDelete(pg_user_attr_rel, &tuple->t_self);  
+  
+    ReleaseSysCache(tuple);  
+    table_close(pg_user_attr_rel, RowExclusiveLock);  
+  
+    /* Make changes visible */  
+    CommandCounterIncrement();  
 }
 
 void DropResourceAttribute(ParseState *pstate, DropResourceAttributeStmt *stmt){
-	/* This function is not implemented in this version */
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("DROP RESOURCE ATTRIBUTE is not supported in this version. Attribute: \"%s\"", stmt->attribute)));	 
+	Relation    pg_resource_attr_rel;  
+    Relation    pg_resource_attr_val_rel;  
+    Relation    pg_abac_rule_rel;  
+    ScanKeyData skey[1];  
+    SysScanDesc scan;  
+    HeapTuple   tuple;  
+    Oid         attr_oid;  
+    Oid         currentUserId = GetUserId();  
+    bool        attr_in_use = false;  
+  
+    /* Only superusers can drop resource attributes */  
+    if (!superuser_arg(currentUserId))  
+        ereport(ERROR,  
+                (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),  
+                 errmsg("must be superuser to drop resource attribute")));  
+  
+    attr_oid = get_resource_attr_oid(stmt->attribute, false);  
+  
+    /* Check if attribute is used in any ABAC rules */  
+    pg_abac_rule_rel = table_open(AbacRuleRelationId, AccessShareLock);  
+  
+    ScanKeyInit(&skey[0],  
+                Anum_pg_abac_rule_attr_id,  
+                BTEqualStrategyNumber, F_OIDEQ,  
+                ObjectIdGetDatum(attr_oid));  
+  
+    scan = systable_beginscan(pg_abac_rule_rel, AbacRulePkeyIndexId, true,  
+                              NULL, 1, skey);  
+  
+    while (HeapTupleIsValid(tuple = systable_getnext(scan)))  
+    {  
+        Form_pg_abac_rule rule = (Form_pg_abac_rule) GETSTRUCT(tuple);  
+          
+        if (!rule->is_user_attr)  
+        {  
+            attr_in_use = true;  
+            break;  
+        }  
+    }  
+  
+    systable_endscan(scan);  
+    table_close(pg_abac_rule_rel, AccessShareLock);  
+  
+    /* If attribute is in use, throw an error */  
+    if (attr_in_use)  
+        ereport(ERROR,  
+                (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),  
+                 errmsg("cannot drop resource attribute \"%s\" because it is used in ABAC rules",  
+                        stmt->attribute),  
+                 errhint("Drop the ABAC rules using this attribute first.")));  
+
+    /* Delete all attribute value assignments from pg_resource_attr_val */  
+    pg_resource_attr_val_rel = table_open(ResourceAttrValRelationId, RowExclusiveLock);  
+
+    ScanKeyInit(&skey[0],
+                Anum_pg_resource_attr_val_attr_id,
+                BTEqualStrategyNumber, F_OIDEQ,
+                ObjectIdGetDatum(attr_oid));
+
+    scan = systable_beginscan(pg_resource_attr_val_rel, ResourceAttrValPkeyIndexId, true,
+                              NULL, 1, skey);
+
+    while (HeapTupleIsValid(tuple = systable_getnext(scan)))
+        CatalogTupleDelete(pg_resource_attr_val_rel, &tuple->t_self);
+
+    systable_endscan(scan);
+    table_close(pg_resource_attr_val_rel, RowExclusiveLock);
+
+    /* Delete the attribute definition from pg_resource_attr */
+    pg_resource_attr_rel = table_open(ResourceAttrRelationId, RowExclusiveLock);
+
+    tuple = SearchSysCache1(RESOURCEATTRID, ObjectIdGetDatum(attr_oid));
+    if (!HeapTupleIsValid(tuple))
+        elog(ERROR, "cache lookup failed for resource attribute %u", attr_oid);
+
+    CatalogTupleDelete(pg_resource_attr_rel, &tuple->t_self);
+
+    ReleaseSysCache(tuple);
+    table_close(pg_resource_attr_rel, RowExclusiveLock);
+
+    /* Make changes visible */  
+    CommandCounterIncrement();  	 
 }
 
 void AddRoleUserAttr(Oid roleid, Oid attrid, const char* value)
