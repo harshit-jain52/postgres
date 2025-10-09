@@ -3059,7 +3059,7 @@ CreateCommandTag(Node *parsetree)
 			break;
 		
 		case T_DropAbacRuleStmt:
-			tag = CMDTAG_CREATE_ABAC_RULE;
+			tag = CMDTAG_DROP_ABAC_RULE;
 			break;
 
 		case T_DropOwnedStmt:

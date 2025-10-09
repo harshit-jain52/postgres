@@ -398,18 +398,195 @@ void GrantResourceAttribute(ParseState *pstate, GrantResourceAttributeStmt *stmt
 	table_close(pg_resource_attr_rel, NoLock); 
 }
 
+void
+DelRoleUserAttr(Oid roleid, Oid attrid, const char* value, const char* attr_name, const char* username)
+{  
+    Relation    pg_user_attr_val_rel;
+	TupleDesc   pg_user_attr_val_dsc;
+    ScanKeyData skey[2];
+    SysScanDesc scan;
+    HeapTuple   tuple;
+    bool        found = false;
+  
+    pg_user_attr_val_rel = table_open(UserAttrValRelationId, RowExclusiveLock);
+    pg_user_attr_val_dsc = RelationGetDescr(pg_user_attr_val_rel);
+
+    ScanKeyInit(&skey[0],
+                Anum_pg_user_attr_val_user_id,
+                BTEqualStrategyNumber, F_OIDEQ,
+                ObjectIdGetDatum(roleid));
+    ScanKeyInit(&skey[1],
+                Anum_pg_user_attr_val_attr_id,
+                BTEqualStrategyNumber, F_OIDEQ,
+                ObjectIdGetDatum(attrid));
+
+    scan = systable_beginscan(pg_user_attr_val_rel, UserAttrValPkeyIndexId,
+                              true, NULL, 2, skey);
+    tuple = systable_getnext(scan);
+
+    if (HeapTupleIsValid(tuple))
+    {
+        Datum       value_datum;
+        text       *value_text;
+        char       *actual_value;
+        bool        isnull;
+        value_datum = heap_getattr(tuple, Anum_pg_user_attr_val_value,
+                                   pg_user_attr_val_dsc, &isnull);
+        if (!isnull)
+        {
+            value_text = DatumGetTextP(value_datum);
+            actual_value = text_to_cstring(value_text);
+            if (strcmp(actual_value, value) == 0)
+            {
+                CatalogTupleDelete(pg_user_attr_val_rel, &tuple->t_self);
+                found = true;
+            }
+            pfree(actual_value);
+        }
+    }
+
+    systable_endscan(scan);
+    table_close(pg_user_attr_val_rel, NoLock);
+	
+    /* Issue a warning if no matching entry was found */
+    if (!found)
+    {
+        ereport(WARNING,
+                (errmsg("attribute \"%s\" with specified value not found for role %s",
+                        attr_name, username)));
+    }
+}
+
+void
+DelRelResourceAttr(Oid relid, Oid attrid, const char* value, const char* attr_name, const char* relname)
+{
+	Relation    pg_resource_attr_val_rel;
+	TupleDesc   pg_resource_attr_val_dsc;
+    ScanKeyData skey[2];
+    SysScanDesc scan;
+    HeapTuple   tuple;
+    bool        found = false;
+  
+    pg_resource_attr_val_rel = table_open(ResourceAttrValRelationId, RowExclusiveLock);
+    pg_resource_attr_val_dsc = RelationGetDescr(pg_resource_attr_val_rel);
+
+    ScanKeyInit(&skey[0],
+                Anum_pg_resource_attr_val_resource_id,
+                BTEqualStrategyNumber, F_OIDEQ,
+                ObjectIdGetDatum(relid));
+    ScanKeyInit(&skey[1],
+                Anum_pg_resource_attr_val_attr_id,
+                BTEqualStrategyNumber, F_OIDEQ,
+                ObjectIdGetDatum(attrid));
+
+    scan = systable_beginscan(pg_resource_attr_val_rel, ResourceAttrValPkeyIndexId,
+                              true, NULL, 2, skey);
+    tuple = systable_getnext(scan);
+
+    if (HeapTupleIsValid(tuple))
+    {
+        Datum       value_datum;
+        text       *value_text;
+        char       *actual_value;
+        bool        isnull;
+        value_datum = heap_getattr(tuple, Anum_pg_resource_attr_val_value,
+                                   pg_resource_attr_val_dsc, &isnull);
+        if (!isnull)
+        {
+            value_text = DatumGetTextP(value_datum);
+            actual_value = text_to_cstring(value_text);
+            if (strcmp(actual_value, value) == 0)
+            {
+                CatalogTupleDelete(pg_resource_attr_val_rel, &tuple->t_self);
+                found = true;
+            }
+            pfree(actual_value);
+        }
+    }
+
+    systable_endscan(scan);
+    table_close(pg_resource_attr_val_rel, NoLock);
+	
+    /* Issue a warning if no matching entry was found */
+    if (!found)
+    {
+        ereport(WARNING,
+                (errmsg("attribute \"%s\" with specified value not found for relation %s",
+                        attr_name, relname)));
+    }
+}
+
 void RevokeUserAttribute(ParseState *pstate, RevokeUserAttributeStmt *stmt){
-	/* This function is not implemented in this version */
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("REVOKE USER ATTRIBUTE is not supported in this version. Attribute: \"%s\", Value: \"%s\"", stmt->attribute, stmt->value)));
+	Relation	pg_authid_rel;
+	Relation	pg_user_attr_rel;
+	ListCell   *item;
+	Oid			currentUserId = GetUserId();
+
+	pg_authid_rel = table_open(AuthIdRelationId, AccessShareLock);
+	pg_user_attr_rel = table_open(UserAttrRelationId, AccessShareLock);
+
+	foreach(item, stmt->grantees)
+	{
+		AccessPriv *priv = (AccessPriv *) lfirst(item);
+		char	   *rolename = priv->priv_name;
+		Oid			roleid;
+		Oid			attrid;
+
+		roleid = get_role_oid(rolename, false);
+		/*
+		* Revoker must be a superuser or the role admin
+		*/
+		if (!superuser_arg(currentUserId) && !is_admin_of_role(currentUserId, roleid))
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("must be superuser or role admin to revoke attribute from role \"%s\"",
+							rolename)));
+		
+		attrid = get_user_attr_oid(stmt->attribute, false);
+		DelRoleUserAttr(roleid, attrid, stmt->value, stmt->attribute, rolename);
+	}
+
+	/*
+	 * Close pg_authid_rel and pg_user_attr_rel, but keep lock till commit.
+	 */
+	table_close(pg_authid_rel, NoLock);
+	table_close(pg_user_attr_rel, NoLock);	
 }
 
 void RevokeResourceAttribute(ParseState *pstate, RevokeResourceAttributeStmt *stmt){
-	/* This function is not implemented in this version */
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("REVOKE RESOURCE ATTRIBUTE is not supported in this version. Attribute: \"%s\", Value: \"%s\"", stmt->attribute, stmt->value)));
+	Relation	pg_class_rel;  
+	Relation	pg_resource_attr_rel;  
+	ListCell   *item;  
+	Oid			currentUserId = GetUserId();
+  
+	pg_class_rel = table_open(RelationRelationId, AccessShareLock);  
+	pg_resource_attr_rel = table_open(ResourceAttrRelationId, AccessShareLock);  
+  
+	foreach(item, stmt->grantees)  
+	{  
+		RangeVar   *relvar = (RangeVar *) lfirst(item);  
+		Oid			relid;  
+		Oid			attrid;  
+		
+		relid = RangeVarGetRelid(relvar, NoLock, false);
+		/*
+		* Revoker must be a superuser or the resource owner
+		*/
+		if(!superuser_arg(currentUserId) && !object_ownercheck(RelationRelationId, relid, currentUserId))
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("must be superuser or resource owner to revoke attribute from relation \"%s\"",
+							relvar->relname)));
+
+		attrid = get_resource_attr_oid(stmt->attribute, false);
+		DelRelResourceAttr(relid, attrid, stmt->value, stmt->attribute, relvar->relname);
+	}
+
+	/*
+	 * Close relations, but keep lock till commit.  
+	 */  
+	table_close(pg_class_rel, NoLock);  
+	table_close(pg_resource_attr_rel, NoLock);	
 }
 
 void AddRuleAttr(Oid ruleid, Oid attrid, bool is_user_attr, const char* value)
@@ -468,14 +645,12 @@ CreateAbacRule(ParseState *pstate, CreateAbacRuleStmt *stmt)
 	AccessPriv *access_priv;
 	Oid			currentUserId = GetUserId();
 
-	/*
-	 * Creator must be a superuser
-	 */
+	/* Only superusers can create ABAC rules */
 	if (!superuser_arg(currentUserId))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser to create user attribute")));
-		
+				 errmsg("must be superuser to create ABAC rule")));
+
 	pg_abac_rule_priv_rel = table_open(AbacRulePrivRelationId, RowExclusiveLock);
 	pg_abac_rule_priv_dsc = RelationGetDescr(pg_abac_rule_priv_rel);
 
@@ -537,8 +712,59 @@ CreateAbacRule(ParseState *pstate, CreateAbacRuleStmt *stmt)
 }
 
 void DropAbacRule(ParseState *pstate, DropAbacRuleStmt *stmt){
-	/* This function is not implemented in this version */
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("DROP ABAC RULE is not supported in this version. Rule: \"%s\"", stmt->rule_name)));
+	Relation    pg_abac_rule_rel;
+    Relation    pg_abac_rule_priv_rel;
+    ScanKeyData skey[1];
+    SysScanDesc scan;
+    HeapTuple   tuple;
+    Oid         rule_priv_oid;
+    Oid         currentUserId = GetUserId();
+  
+    /* Only superusers can drop ABAC rules */
+    if (!superuser_arg(currentUserId))
+        ereport(ERROR,
+                (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+                 errmsg("must be superuser to drop ABAC rule")));
+  
+    rule_priv_oid = get_abac_rule_oid(stmt->rule_name, false);
+  
+    pg_abac_rule_rel = table_open(AbacRuleRelationId, RowExclusiveLock);
+    pg_abac_rule_priv_rel = table_open(AbacRulePrivRelationId, RowExclusiveLock);
+  
+    /* Delete all attribute entries from pg_abac_rule */
+    ScanKeyInit(&skey[0],
+                Anum_pg_abac_rule_rule_id,
+                BTEqualStrategyNumber, F_OIDEQ,
+                ObjectIdGetDatum(rule_priv_oid));
+  
+    scan = systable_beginscan(pg_abac_rule_rel, AbacRulePkeyIndexId, true,
+                              NULL, 1, skey);
+  
+    while (HeapTupleIsValid(tuple = systable_getnext(scan)))
+        CatalogTupleDelete(pg_abac_rule_rel, &tuple->t_self);
+  
+    systable_endscan(scan);
+  
+    /* Delete the privilege entry from pg_abac_rule_priv */
+    ScanKeyInit(&skey[0],
+                Anum_pg_abac_rule_priv_oid,
+                BTEqualStrategyNumber, F_OIDEQ,
+                ObjectIdGetDatum(rule_priv_oid));
+  
+    scan = systable_beginscan(pg_abac_rule_priv_rel, AbacRulePrivOidIndexId, true,
+                              NULL, 1, skey);
+  
+    tuple = systable_getnext(scan);
+    if (!HeapTupleIsValid(tuple))
+        elog(ERROR, "could not find tuple for ABAC rule \"%s\"", stmt->rule_name);
+  
+    CatalogTupleDelete(pg_abac_rule_priv_rel, &tuple->t_self);
+  
+    systable_endscan(scan);
+  
+    table_close(pg_abac_rule_rel, RowExclusiveLock);
+    table_close(pg_abac_rule_priv_rel, RowExclusiveLock);
+  
+    /* Advance command counter to make changes visible */
+    CommandCounterIncrement();
 }
