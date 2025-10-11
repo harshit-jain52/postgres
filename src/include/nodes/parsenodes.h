@@ -3275,6 +3275,18 @@ typedef struct RevokeResourceAttributeStmt
 } RevokeResourceAttributeStmt;
 
 /* ----------------------
+ *		Set ABAC Environment Attribute Statement
+ * ----------------------
+ */
+
+typedef struct SetEnvAttributeStmt
+{
+	NodeTag		type;
+	char *attribute;
+	List	   *values;
+} SetEnvAttributeStmt;
+
+/* ----------------------
  *		{Create|Drop} ABAC RULE Statement
  * ----------------------
  */

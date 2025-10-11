@@ -211,6 +211,7 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_GrantResourceAttributeStmt:
 		case T_RevokeUserAttributeStmt:
 		case T_RevokeResourceAttributeStmt:
+		case T_SetEnvAttributeStmt:
 		case T_CreateAbacRuleStmt:
 		case T_DropAbacRuleStmt:
 		case T_ImportForeignSchemaStmt:
@@ -968,6 +969,10 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			RevokeResourceAttribute(pstate, (RevokeResourceAttributeStmt *) parsetree);
 			break;
 		
+		case T_SetEnvAttributeStmt:
+			SetEnvAttribute(pstate, (SetEnvAttributeStmt *) parsetree);
+			break;
+
 		case T_CreateAbacRuleStmt:
 			CreateAbacRule(pstate, (CreateAbacRuleStmt *) parsetree);
 			break;
@@ -3054,6 +3059,10 @@ CreateCommandTag(Node *parsetree)
 			tag = CMDTAG_REVOKE_RESOURCE_ATTRIBUTE;
 			break;
 		
+		case T_SetEnvAttributeStmt:
+			tag = CMDTAG_SET_ENV_ATTRIBUTE;
+			break;
+
 		case T_CreateAbacRuleStmt:
 			tag = CMDTAG_CREATE_ABAC_RULE;
 			break;
@@ -3715,6 +3724,10 @@ GetCommandLogLevel(Node *parsetree)
 			lev = LOGSTMT_DDL;
 			break;
 		
+		case T_SetEnvAttributeStmt:
+			lev = LOGSTMT_DDL;
+			break;
+
 		case T_CreateAbacRuleStmt:
 			lev = LOGSTMT_DDL;
 			break;

@@ -23,6 +23,7 @@
 #include "catalog/pg_user_attr_val.h"
 #include "catalog/pg_resource_attr.h"
 #include "catalog/pg_resource_attr_val.h"
+#include "catalog/pg_abac_env_workday.h"
 #include "catalog/pg_abac_rule.h"
 #include "catalog/pg_abac_rule_priv.h"
 #include "catalog/pg_auth_members.h"
@@ -36,6 +37,7 @@
 #include "commands/defrem.h"
 #include "commands/seclabel.h"
 #include "commands/user.h"
+#include "nodes/nodes.h"
 #include "lib/qunique.h"
 #include "libpq/crypt.h"
 #include "miscadmin.h"
@@ -745,6 +747,99 @@ void RevokeResourceAttribute(ParseState *pstate, RevokeResourceAttributeStmt *st
 	 */  
 	table_close(pg_class_rel, NoLock);  
 	table_close(pg_resource_attr_rel, NoLock);	
+}
+
+void SetEnvAttribute(ParseState *pstate, SetEnvAttributeStmt *stmt){
+	Relation	pg_abac_env_workday_rel;
+	TupleDesc	pg_abac_env_workday_dsc;
+	ListCell   *item;
+	const char *const days[] = {"sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"};
+	bool is_workday[7] = {false, false, false, false, false, false, false};
+	HeapTuple	tuple;  
+	HeapTuple	newtuple;  
+	Datum		values[Natts_pg_abac_env_workday];  
+	bool		nulls[Natts_pg_abac_env_workday];  
+	bool		replaces[Natts_pg_abac_env_workday];
+	Oid			currentUserId = GetUserId();
+
+	if(!superuser_arg(currentUserId))
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("must be superuser to set environment attribute")));
+
+	if(strcmp(stmt->attribute, "workday") != 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("unrecognized environment attribute \"%s\"",
+						stmt->attribute)));
+	
+	foreach(item, stmt->values){
+		Node *node = (Node *) lfirst(item);
+		char *day = strVal(lfirst(item));
+		bool valid_day = false;
+		int i;
+
+		/* Extract string value from the node */  
+		if (IsA(node, A_Const))  
+		{  
+			A_Const *con = (A_Const *) node;  
+			day = strVal(&con->val);  
+		}  
+		else if (IsA(node, String))  
+		{  
+			day = strVal(node);  
+		}  
+		else  
+		{  
+			ereport(ERROR,  
+					(errcode(ERRCODE_SYNTAX_ERROR),  
+					errmsg("invalid value type for environment attribute")));  
+		} 
+		
+		for(i = 0; i < 7; i++){
+			if(strcmp(day, days[i]) == 0){
+				valid_day = true;
+				is_workday[i] = true;
+				break;
+			}
+		}
+
+		if(!valid_day){
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("invalid value \"%s\" for environment attribute \"%s\"",
+							day, stmt->attribute),
+					 errhint("Valid values are: sunday, monday, tuesday, wednesday, thursday, friday, saturday.")));
+		}
+	}
+
+	pg_abac_env_workday_rel = table_open(AbacEnvWorkdayRelationId, RowExclusiveLock);
+	pg_abac_env_workday_dsc = RelationGetDescr(pg_abac_env_workday_rel);
+
+	/* Update each day of the week */  
+	for(int i = 0; i < 7; i++){  
+  
+		tuple = SearchSysCache1(ABACENVWORKDAY, Int16GetDatum(i));  
+		if (!HeapTupleIsValid(tuple))
+			elog(ERROR, "cache lookup failed for day_of_week %d", i);
+
+		memset(values, 0, sizeof(values));
+		memset(nulls, false, sizeof(nulls));
+		memset(replaces, false, sizeof(replaces));
+
+		values[Anum_pg_abac_env_workday_is_workday - 1] = BoolGetDatum(is_workday[i]);  
+		replaces[Anum_pg_abac_env_workday_is_workday - 1] = true;  
+  
+		newtuple = heap_modify_tuple(tuple, pg_abac_env_workday_dsc,  
+									  values, nulls, replaces);  
+		  
+		CatalogTupleUpdate(pg_abac_env_workday_rel, &newtuple->t_self, newtuple);  
+  
+		heap_freetuple(newtuple);  
+		ReleaseSysCache(tuple);  
+	}
+
+	table_close(pg_abac_env_workday_rel, NoLock);
 }
 
 void AddRuleAttr(Oid ruleid, Oid attrid, bool is_user_attr, const char* value)

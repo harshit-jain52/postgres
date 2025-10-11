@@ -311,6 +311,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 		CreateSubscriptionStmt AlterSubscriptionStmt DropSubscriptionStmt
 		CreateUserAttributeStmt CreateResourceAttributeStmt DropUserAttributeStmt DropResourceAttributeStmt
 		GrantUserAttributeStmt GrantResourceAttributeStmt RevokeUserAttributeStmt RevokeResourceAttributeStmt
+		SetEnvAttributeStmt
 		CreateAbacRuleStmt DropAbacRuleStmt
 
 %type <node>	select_no_parens select_with_parens select_clause
@@ -725,7 +726,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 	EACH ELSE EMPTY_P ENABLE_P ENCODING ENCRYPTED END_P ENFORCED ENUM_P ERROR_P
 	ESCAPE EVENT EXCEPT EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN
-	EXPRESSION EXTENSION EXTERNAL EXTRACT
+	EXPRESSION EXTENSION EXTERNAL EXTRACT ENV_ATTRIBUTE
 
 	FALSE_P FAMILY FETCH FILTER FINALIZE FIRST_P FLOAT_P FOLLOWING FOR
 	FORCE FOREIGN FORMAT FORWARD FREEZE FROM FULL FUNCTION FUNCTIONS
@@ -1119,6 +1120,7 @@ stmt:
 			| RuleStmt
 			| SecLabelStmt
 			| SelectStmt
+			| SetEnvAttributeStmt
 			| TransactionStmt
 			| TruncateStmt
 			| UnlistenStmt
@@ -1671,6 +1673,21 @@ RevokeResourceAttributeStmt:
 value_all:
 		NonReservedWord
 		| ALL 			{ $$ = pstrdup($1); }
+		;
+
+/*****************************************************************************
+ *
+ * Configure Postgres Environment Attribute WORKDAY
+ *
+ *****************************************************************************/
+SetEnvAttributeStmt:
+			SET ENV_ATTRIBUTE name '=' var_list
+				{
+					SetEnvAttributeStmt *n = makeNode(SetEnvAttributeStmt);
+					n->attribute = $3;
+					n->values = $5;
+					$$ = (Node *) n;
+				}
 		;
 
 /*****************************************************************************
@@ -18027,6 +18044,7 @@ unreserved_keyword:
 			| ENCRYPTED
 			| ENFORCED
 			| ENUM_P
+			| ENV_ATTRIBUTE
 			| ERROR_P
 			| ESCAPE
 			| EVENT
@@ -18610,6 +18628,7 @@ bare_label_keyword:
 			| END_P
 			| ENFORCED
 			| ENUM_P
+			| ENV_ATTRIBUTE
 			| ERROR_P
 			| ESCAPE
 			| EVENT

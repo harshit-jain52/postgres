@@ -31,6 +31,8 @@ void AddRelResourceAttr(Oid relid, Oid attrid, const char* value);
 extern void RevokeResourceAttribute(ParseState *pstate, RevokeResourceAttributeStmt *stmt);
 void DelRelResourceAttr(Oid relid, Oid attrid, const char* value, const char* attr_name, const char* relname);
 
+extern void SetEnvAttribute(ParseState *pstate, SetEnvAttributeStmt *stmt);
+
 extern void CreateAbacRule(ParseState *pstate, CreateAbacRuleStmt *stmt);
 void AddRuleAttr(Oid ruleid, Oid attrid, bool is_user_attr, const char* value);
 extern void DropAbacRule(ParseState *pstate, DropAbacRuleStmt *stmt);
