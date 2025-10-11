@@ -678,6 +678,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <str> 	value_all value_any
 %type <defelt> attribute_pair
 %type <list> attribute_pair_list user_attribute_clause resource_attribute_clause user_attribute_clause_opt resource_attribute_clause_opt attribute_clause
+%type <boolean> is_workday_value
 /*
  * Non-keyword token types.  These are hard-wired into the "flex" lexer.
  * They must be listed first so that their numeric codes do not depend on
@@ -1697,13 +1698,19 @@ SetEnvAttributeStmt:
  *****************************************************************************/
 
 CreateAbacRuleStmt:
-			CREATE ABAC_RULE name FOR privileges OF attribute_clause {
+			CREATE ABAC_RULE name FOR privileges OF attribute_clause ENV_ATTRIBUTE is_workday_value {
 					CreateAbacRuleStmt *n = makeNode(CreateAbacRuleStmt);
 					n -> rule_name = $3;
 					n -> privileges = $5;
 					n -> attribute_clause = $7;
+					n -> is_workday = $9;
 					$$ = (Node *) n;
 				}
+		;
+
+is_workday_value:
+			TRUE_P		{ $$ = true; }
+			| FALSE_P	{ $$ = false; }
 		;
 
 attribute_clause:
@@ -1721,8 +1728,8 @@ user_attribute_clause:
         ;
 
 user_attribute_clause_opt:
-            AND user_attribute_clause
-                { $$ = $2; }
+            user_attribute_clause
+                { $$ = $1; }
             | /* EMPTY */
                 { $$ = NIL; }
         ;
@@ -1733,8 +1740,8 @@ resource_attribute_clause:
         ;
 
 resource_attribute_clause_opt:
-            AND resource_attribute_clause
-                { $$ = $2; }
+            resource_attribute_clause
+                { $$ = $1; }
             | /* EMPTY */
                 { $$ = NIL; }
         ;

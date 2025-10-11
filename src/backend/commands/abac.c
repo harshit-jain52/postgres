@@ -928,6 +928,7 @@ CreateAbacRule(ParseState *pstate, CreateAbacRuleStmt *stmt)
 	new_record[Anum_pg_abac_rule_priv_oid - 1] = ObjectIdGetDatum(rule_id);
 	new_record[Anum_pg_abac_rule_priv_rulename - 1] = DirectFunctionCall1(namein, CStringGetDatum(stmt->rule_name));
 	new_record[Anum_pg_abac_rule_priv_privileges - 1] = Int32GetDatum(privilege_mask);
+	new_record[Anum_pg_abac_rule_priv_is_workday - 1] = BoolGetDatum(stmt->is_workday);
 
 	tuple = heap_form_tuple(pg_abac_rule_priv_dsc, new_record, new_record_nulls);    
 	CatalogTupleInsert(pg_abac_rule_priv_rel, tuple);

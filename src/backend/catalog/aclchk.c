@@ -49,6 +49,7 @@
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
+#include "catalog/pg_abac_env_workday.h"
 #include "catalog/pg_abac_rule.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_class.h"
@@ -5129,4 +5130,30 @@ bool check_resource_attribute_condition(Oid relid, Oid attr_id, const char *expe
 	table_close(pg_res_attr_val_rel, AccessShareLock);
 
 	return condition_met;
+}
+
+bool check_workday()
+{
+	time_t		rawtime;
+	struct tm  *timeinfo;
+	int16		day_of_week;
+	bool		is_workday;
+	HeapTuple   tuple;
+	Form_pg_abac_env_workday workday_form;
+
+	time(&rawtime);
+	timeinfo = localtime(&rawtime);
+	day_of_week = timeinfo->tm_wday; // Sunday = 0, Monday = 1, ..., Saturday = 6
+
+	tuple = SearchSysCache1(ABACENVWORKDAY, Int16GetDatum(day_of_week));  
+
+	if (!HeapTupleIsValid(tuple))  
+			elog(ERROR, "cache lookup failed for day_of_week %d", day_of_week);
+	
+	workday_form = (Form_pg_abac_env_workday) GETSTRUCT(tuple);  
+	is_workday = workday_form->is_workday;
+
+	ReleaseSysCache(tuple);
+
+	return is_workday;
 }
