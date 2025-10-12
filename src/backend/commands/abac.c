@@ -596,7 +596,7 @@ DelRoleUserAttr(Oid roleid, Oid attrid, const char* value, const char* attr_name
         {
             value_text = DatumGetTextP(value_datum);
             actual_value = text_to_cstring(value_text);
-            if (strcmp(actual_value, value) == 0)
+            if (strcmp(value, "all") == 0 || strcmp(actual_value, value) == 0)
             {
                 CatalogTupleDelete(pg_user_attr_val_rel, &tuple->t_self);
                 found = true;
@@ -655,7 +655,7 @@ DelRelResourceAttr(Oid relid, Oid attrid, const char* value, const char* attr_na
         {
             value_text = DatumGetTextP(value_datum);
             actual_value = text_to_cstring(value_text);
-            if (strcmp(actual_value, value) == 0)
+            if (strcmp(value, "all") == 0 || strcmp(actual_value, value) == 0)
             {
                 CatalogTupleDelete(pg_resource_attr_val_rel, &tuple->t_self);
                 found = true;

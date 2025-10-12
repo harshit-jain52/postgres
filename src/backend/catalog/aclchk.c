@@ -5071,7 +5071,7 @@ bool check_user_attribute_condition(Oid userid, Oid attr_id, const char *expecte
             value_text = DatumGetTextP(value_datum);  
             value_cstr = text_to_cstring(value_text);  
               
-            if (strcmp(value_cstr, expected_value) == 0)
+            if (strcmp(expected_value, "any") == 0 || strcmp(value_cstr, expected_value) == 0)
                 condition_met = true;
 
             pfree(value_cstr);  
