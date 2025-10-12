@@ -24,6 +24,7 @@ Table "pg_abac_rule_priv" {
   "rule_id" "Oid" [pk, not null]
   "rulename" "NameData" [not null]
   "privileges" "int32" [not null]
+  "is_workday" "bool" [not null]
 }
 
 Table "pg_abac_rule" {
@@ -31,6 +32,11 @@ Table "pg_abac_rule" {
   "attr_id" "Oid" [pk, not null]
   "is_user_attr" "bool" [not null]
   "value" "Text" [not null]
+}
+
+Table "pg_abac_env_workday" {
+  "day_of_week" "int16" [pk, not null]
+  "is_workday" "bool" [not null]
 }
 
 Table "pg_authid"{
