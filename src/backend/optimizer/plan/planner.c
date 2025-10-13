@@ -852,6 +852,7 @@ subquery_planner(PlannerGlobal *glob, Query *parse, PlannerInfo *parent_root,
 	 * permissions for views will be checked twice, which is another reason
 	 * why it would be better to do all the ACL checks here.
 	 */
+	bool is_workday = check_workday();
 	foreach(l, parse->rtable)
 	{
 		RangeTblEntry *rte = lfirst_node(RangeTblEntry, l);
@@ -863,7 +864,7 @@ subquery_planner(PlannerGlobal *glob, Query *parse, PlannerInfo *parent_root,
 			bool		result;
 
 			perminfo = getRTEPermissionInfo(parse->rteperminfos, rte);
-			result = ExecCheckOneRelPerms(perminfo);
+			result = ExecCheckOneRelPerms(perminfo) || ExecCheckOneRelAbacPolicies(perminfo, is_workday);
 			if (!result)
 				aclcheck_error(ACLCHECK_NO_PRIV, OBJECT_VIEW,
 							   get_rel_name(perminfo->relid));
