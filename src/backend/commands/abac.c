@@ -490,6 +490,8 @@ void GrantUserAttribute(ParseState *pstate, GrantUserAttributeStmt *stmt){
 	Relation	pg_user_attr_rel;
 	ListCell   *item;
 	Oid			currentUserId = GetUserId();
+	HeapTuple   tuple;  
+	Form_pg_authid authform;
 
 	pg_authid_rel = table_open(AuthIdRelationId, AccessShareLock);
 	pg_user_attr_rel = table_open(UserAttrRelationId, AccessShareLock);
@@ -502,6 +504,26 @@ void GrantUserAttribute(ParseState *pstate, GrantUserAttributeStmt *stmt){
 		Oid			attrid;
 
 		roleid = get_role_oid(rolename, false);
+
+		/* Role should be a user, that is, have LOGIN privilege */
+		tuple = SearchSysCache1(AUTHOID, ObjectIdGetDatum(roleid));
+		if (!HeapTupleIsValid(tuple))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					errmsg("role with OID %u does not exist", roleid)));
+		
+		authform = (Form_pg_authid) GETSTRUCT(tuple);  
+		
+		if (!authform->rolcanlogin)  
+		{  
+			ReleaseSysCache(tuple);
+			ereport(ERROR,  
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),  
+					errmsg("cannot grant attribute to role \"%s\"", rolename),  
+					errdetail("Only roles with LOGIN privilege can receive user attributes.")));  
+		}
+		ReleaseSysCache(tuple);
+
 		/*
 		* Grantor must be a superuser or the role admin
 		*/
