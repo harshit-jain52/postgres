@@ -661,6 +661,7 @@ subquery_planner(PlannerGlobal *glob, Query *parse, PlannerInfo *parent_root,
 	bool		hasResultRTEs;
 	RelOptInfo *final_rel;
 	ListCell   *l;
+	bool		is_workday;
 
 	/* Create a PlannerInfo data structure for this subquery */
 	root = makeNode(PlannerInfo);
@@ -852,7 +853,7 @@ subquery_planner(PlannerGlobal *glob, Query *parse, PlannerInfo *parent_root,
 	 * permissions for views will be checked twice, which is another reason
 	 * why it would be better to do all the ACL checks here.
 	 */
-	bool is_workday = check_workday();
+	is_workday = check_workday();
 	foreach(l, parse->rtable)
 	{
 		RangeTblEntry *rte = lfirst_node(RangeTblEntry, l);
