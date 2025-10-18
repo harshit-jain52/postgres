@@ -6,19 +6,7 @@ def generate_workload(num_users=10, num_user_attrs=20, num_rules=500, table_name
     users = [f"user{i}" for i in range(1, num_users + 1)]
 
     sql = []
-
-    # --- Clean slate ---
-    sql.append("-- Clean slate")
-    sql.append(f"DROP TABLE IF EXISTS {table_name} CASCADE;")
-    sql.append("DROP USER IF EXISTS " + ", ".join(users) + ";")
-    for i in range(num_rules):
-        sql.append(f"DROP ABAC_RULE rule{i};")
-
-    for i in range(num_user_attrs):
-        sql.append(f"DROP USER_ATTRIBUTE attr{i};")
-
-    sql.append("DROP RESOURCE_ATTRIBUTE privacy;")
-    sql.append("DROP RESOURCE_ATTRIBUTE category;")
+    sql.append("SET ENV_ATTRIBUTE workday = monday, tuesday, wednesday, thursday, friday, saturday, sunday;")
 
     # --- Create users ---
     sql.append("\n-- Create users")
@@ -96,33 +84,33 @@ SELECT * FROM {table_name};
 
     sql.append("RESET SESSION AUTHORIZATION;")
 
+    # --- Clean slate ---
+    sql.append("-- Clean slate")
+    sql.append(f"DROP TABLE IF EXISTS {table_name} CASCADE;")
+    sql.append("DROP USER IF EXISTS " + ", ".join(users) + ";")
+    for i in range(num_rules):
+        sql.append(f"DROP ABAC_RULE rule{i};")
+
+    for i in range(num_user_attrs):
+        sql.append(f"DROP USER_ATTRIBUTE attr{i};")
+
+    sql.append("DROP RESOURCE_ATTRIBUTE privacy;")
+    sql.append("DROP RESOURCE_ATTRIBUTE category;")
+
     return "\n".join(sql)
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print("Usage: python generate_workload_users.py <num_users> <num_user_attributes>")
+    if len(sys.argv) < 4:
+        print("Usage: python generate_workload_users.py <num_users> <num_user_attributes> <num_rules>")
         sys.exit(1)
 
     num_users = int(sys.argv[1])
     num_user_attrs = int(sys.argv[2])
+    num_rules = int(sys.argv[3])
 
-    script = generate_workload(num_users, num_user_attrs)
+    script = generate_workload(num_users, num_user_attrs, num_rules)
     with open("generated_workload.sql", "w") as f:
         f.write(script)
 
-    print(f"Generated workload with {num_users} users, {num_user_attrs} user attributes, and 500 ABAC rules in 'generated_workload.sql'")
-
-# if __name__ == "__main__":
-#     if len(sys.argv) < 3:
-#         print("Usage: python generate_workload_users.py <num_users> <num_rules>")
-#         sys.exit(1)
-
-#     num_users = int(sys.argv[1])
-#     num_rules = int(sys.argv[2])
-
-#     script = generate_workload(num_users=num_users, num_rules=num_rules)
-#     with open("generated_workload.sql", "w") as f:
-#         f.write(script)
-
-#     print(f"Generated workload with {num_users} users, 20 user attributes, and {num_rules} ABAC rules in 'generated_workload.sql'")
+    print(f"Generated workload with {num_users} users, {num_user_attrs} user attributes, and {num_rules} ABAC rules in 'generated_workload.sql'")
