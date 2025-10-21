@@ -5,4 +5,4 @@ This directory contains the source code distribution of ASPS — a modified vers
 
 ASPS extends PostgreSQL’s access control framework by integrating attribute-driven policies alongside traditional Discretionary Access Control (DAC) and Role-Based Access Control (RBAC). It introduces new SQL syntax, system catalogs, and enforcement mechanisms for managing user, resource, and environmental attributes. In addition to supporting standard PostgreSQL features such as transactions, triggers, stored procedures, and user-defined functions, ASPS allows defining and enforcing ABAC rules directly within the database engine.
 
-<!-- Copyright and license information can be found in the file COPYRIGHT. -->
+Copyright and license information can be found in the file COPYRIGHT.
