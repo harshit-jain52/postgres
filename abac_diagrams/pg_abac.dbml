@@ -10,13 +10,13 @@ Table "pg_resource_attr" {
 
 Table "pg_user_attr_val" {
   "user_id" "Oid" [pk, not null]
-  "attr_id" "NameData" [pk, not null]
+  "attr_id" "Oid" [pk, not null]
   "value" "Text" [not null]
 }
 
 Table "pg_resource_attr_val" {
   "resource_id" "Oid" [pk, not null]
-  "attr_id" "NameData" [pk, not null]
+  "attr_id" "Oid" [pk, not null]
   "value" "Text" [not null]
 }
 
