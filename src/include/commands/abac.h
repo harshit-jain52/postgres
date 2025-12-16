@@ -32,6 +32,8 @@ extern void RevokeResourceAttribute(ParseState *pstate, RevokeResourceAttributeS
 void DelRelResourceAttr(Oid relid, Oid attrid, const char* value, const char* attr_name, const char* relname);
 
 extern void SetEnvAttribute(ParseState *pstate, SetEnvAttributeStmt *stmt);
+void handle_workday(SetEnvAttributeStmt *stmt);
+void handle_timewindow(SetEnvAttributeStmt *stmt);
 
 extern void CreateAbacRule(ParseState *pstate, CreateAbacRuleStmt *stmt);
 void AddRuleAttr(Oid ruleid, Oid attrid, bool is_user_attr, const char* value);

@@ -75,11 +75,13 @@ catalog_headers = [
   'pg_resource_attr_val.h',
   'pg_abac_rule.h',
   'pg_abac_rule_priv.h',
-  'pg_abac_env_workday.h'
+  'pg_abac_env_workday.h',
+  'pg_abac_env_timewindow.h'
 ]
 
 # The .dat files we need can just be listed alphabetically.
 bki_data = [
+  'pg_abac_env_timewindow.dat',
   'pg_abac_env_workday.dat',
   'pg_aggregate.dat',
   'pg_am.dat',

@@ -295,5 +295,6 @@ extern bool evaluate_abac_rule_conditions(Oid rule_id, Oid userid, Oid relid);
 extern bool check_user_attribute_condition(Oid userid, Oid attr_id, const char *expected_value);
 extern bool check_resource_attribute_condition(Oid relid, Oid attr_id, const char *expected_value);
 extern bool check_workday();
+extern bool check_worktime();
 
 #endif							/* ACL_H */

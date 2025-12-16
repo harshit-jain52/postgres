@@ -2,9 +2,11 @@ DATA_DIR="/usr/local/pgsql/data"
 PG_BIN="/usr/local/pgsql/bin"
 PG_USER="postgres"
 
+clear
+
 ./stop_server.sh
 
-./configure
+# ./configure
 make clean
 make -j 8
 sudo make install

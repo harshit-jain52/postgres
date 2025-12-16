@@ -586,6 +586,7 @@ ExecCheckPermissions(List *rangeTable, List *rteperminfos,
 	ListCell   *l;
 	bool		result = true;
 	bool 		is_workday = check_workday();
+	bool		is_worktime = check_worktime();
 
 #ifdef USE_ASSERT_CHECKING
 	Bitmapset  *indexset = NULL;
@@ -623,7 +624,7 @@ ExecCheckPermissions(List *rangeTable, List *rteperminfos,
 		RTEPermissionInfo *perminfo = lfirst_node(RTEPermissionInfo, l);
 
 		Assert(OidIsValid(perminfo->relid));
-		result = ExecCheckOneRelPerms(perminfo) || ExecCheckOneRelAbacPolicies(perminfo, is_workday);
+		result = ExecCheckOneRelPerms(perminfo) || ExecCheckOneRelAbacPolicies(perminfo, is_workday, is_worktime);
 		if (!result)
 		{
 			if (ereport_on_violation)
@@ -831,7 +832,7 @@ ExecCheckXactReadOnly(PlannedStmt *plannedstmt)
  *		Check ABAC access policies for a single relation.
  */
 bool
-ExecCheckOneRelAbacPolicies(RTEPermissionInfo *perminfo, bool is_workday){
+ExecCheckOneRelAbacPolicies(RTEPermissionInfo *perminfo, bool is_workday, bool is_worktime){
 	Oid         userid;  
     Oid         relid = perminfo->relid;  
     AclMode     requiredPerms = perminfo->requiredPerms;
@@ -850,7 +851,9 @@ ExecCheckOneRelAbacPolicies(RTEPermissionInfo *perminfo, bool is_workday){
 	while (HeapTupleIsValid(tuple = systable_getnext(scan)))  
     {  
         Form_pg_abac_rule_priv rule_priv = (Form_pg_abac_rule_priv) GETSTRUCT(tuple);  
-		if (is_workday == rule_priv->is_workday && evaluate_abac_rule_conditions(rule_priv->oid, userid, relid))  
+		if (is_workday == rule_priv->is_workday
+			&& is_worktime == rule_priv->is_worktime
+			&& evaluate_abac_rule_conditions(rule_priv->oid, userid, relid))  
 			currentPerms |= rule_priv->privileges;
 		
     }

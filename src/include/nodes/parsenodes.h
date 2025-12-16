@@ -3298,6 +3298,7 @@ typedef struct CreateAbacRuleStmt
 	List	   *privileges;		
 	List	   *attribute_clause;
 	bool		is_workday;
+	bool		is_worktime;
 } CreateAbacRuleStmt;
 
 typedef struct DropAbacRuleStmt

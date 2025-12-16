@@ -88,7 +88,8 @@ CATALOG_HEADERS := \
 	pg_resource_attr_val.h \
 	pg_abac_rule.h \
 	pg_abac_rule_priv.h \
-	pg_abac_env_workday.h
+	pg_abac_env_workday.h \
+	pg_abac_env_timewindow.h
 
 GENERATED_HEADERS := $(CATALOG_HEADERS:%.h=%_d.h)
 
@@ -96,6 +97,7 @@ POSTGRES_BKI_SRCS := $(addprefix $(top_srcdir)/src/include/catalog/, $(CATALOG_H
 
 # The .dat files we need can just be listed alphabetically.
 POSTGRES_BKI_DATA = \
+	pg_abac_env_timewindow.dat \
 	pg_abac_env_workday.dat \
 	pg_aggregate.dat \
 	pg_am.dat \

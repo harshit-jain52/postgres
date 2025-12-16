@@ -23,6 +23,7 @@
 #include "catalog/pg_user_attr_val.h"
 #include "catalog/pg_resource_attr.h"
 #include "catalog/pg_resource_attr_val.h"
+#include "catalog/pg_abac_env_timewindow.h"
 #include "catalog/pg_abac_env_workday.h"
 #include "catalog/pg_abac_rule.h"
 #include "catalog/pg_abac_rule_priv.h"
@@ -772,6 +773,25 @@ void RevokeResourceAttribute(ParseState *pstate, RevokeResourceAttributeStmt *st
 }
 
 void SetEnvAttribute(ParseState *pstate, SetEnvAttributeStmt *stmt){
+	Oid			currentUserId = GetUserId();
+
+	if(!superuser_arg(currentUserId))
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("must be superuser to set environment attribute")));
+
+	if(strcmp(stmt->attribute, "workday") == 0)
+		handle_workday(stmt);
+	else if(strcmp(stmt->attribute, "timewindow") == 0)
+		handle_timewindow(stmt);
+	else
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("unrecognized environment attribute \"%s\"",
+						stmt->attribute)));
+}
+
+void handle_workday(SetEnvAttributeStmt *stmt){
 	Relation	pg_abac_env_workday_rel;
 	TupleDesc	pg_abac_env_workday_dsc;
 	ListCell   *item;
@@ -782,18 +802,6 @@ void SetEnvAttribute(ParseState *pstate, SetEnvAttributeStmt *stmt){
 	Datum		values[Natts_pg_abac_env_workday];  
 	bool		nulls[Natts_pg_abac_env_workday];  
 	bool		replaces[Natts_pg_abac_env_workday];
-	Oid			currentUserId = GetUserId();
-
-	if(!superuser_arg(currentUserId))
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser to set environment attribute")));
-
-	if(strcmp(stmt->attribute, "workday") != 0)
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("unrecognized environment attribute \"%s\"",
-						stmt->attribute)));
 	
 	foreach(item, stmt->values){
 		Node *node = (Node *) lfirst(item);
@@ -862,6 +870,78 @@ void SetEnvAttribute(ParseState *pstate, SetEnvAttributeStmt *stmt){
 	}
 
 	table_close(pg_abac_env_workday_rel, NoLock);
+}
+
+void handle_timewindow(SetEnvAttributeStmt *stmt){
+	int vals[4];
+	int idx = 0;
+	ListCell *lc;
+	int sh, sm, eh, em;
+	int start_min, end_min;
+	Relation rel;
+	TupleDesc dsc;
+	HeapTuple tuple, newtuple;
+	Datum values[Natts_pg_abac_env_timewindow];
+	bool nulls[Natts_pg_abac_env_timewindow];
+	bool replaces[Natts_pg_abac_env_timewindow];
+	
+	if (list_length(stmt->values) != 4)
+    	ereport(ERROR,
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			errmsg("timewindow requires 4 values: start_hour, start_minute, end_hour, end_minute")));
+
+
+	foreach(lc, stmt->values)
+	{
+		Node *node = (Node *) lfirst(lc);
+
+		if (!IsA(node, A_Const) || !IsA(&((A_Const *)node)->val, Integer))
+			ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				errmsg("timewindow values must be integers")));
+
+		vals[idx++] = intVal(&((A_Const *)node)->val);
+	}
+
+	sh = vals[0], sm = vals[1], eh = vals[2], em = vals[3];
+
+	if (sh < 0 || sh > 23 || eh < 0 || eh > 23 ||
+		sm < 0 || sm > 59 || em < 0 || em > 59)
+		ereport(ERROR,
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			errmsg("invalid hour/minute in timewindow")));
+
+	start_min = sh * 60 + sm;
+	end_min   = eh * 60 + em;
+
+	if (start_min >= end_min)
+		ereport(ERROR,
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			errmsg("start time must be earlier than end time")));
+
+
+	rel = table_open(AbacEnvTimewindowRelationId, RowExclusiveLock);
+	dsc = RelationGetDescr(rel);
+
+	tuple = SearchSysCache1(ABACENVTIMEWINDOW, ObjectIdGetDatum(1));
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "cache lookup failed for pg_abac_env_timewindow");
+
+	memset(values, 0, sizeof(values));
+	memset(nulls, false, sizeof(nulls));
+	memset(replaces, false, sizeof(replaces));
+
+	values[Anum_pg_abac_env_timewindow_start_minute - 1] = Int32GetDatum(start_min);
+	values[Anum_pg_abac_env_timewindow_end_minute - 1]   = Int32GetDatum(end_min);
+	replaces[Anum_pg_abac_env_timewindow_start_minute - 1] = true;
+	replaces[Anum_pg_abac_env_timewindow_end_minute - 1]   = true;
+
+	newtuple = heap_modify_tuple(tuple, dsc, values, nulls, replaces);
+	CatalogTupleUpdate(rel, &newtuple->t_self, newtuple);
+
+	heap_freetuple(newtuple);
+	ReleaseSysCache(tuple);
+	table_close(rel, NoLock);
 }
 
 void AddRuleAttr(Oid ruleid, Oid attrid, bool is_user_attr, const char* value)
@@ -951,6 +1031,7 @@ CreateAbacRule(ParseState *pstate, CreateAbacRuleStmt *stmt)
 	new_record[Anum_pg_abac_rule_priv_rulename - 1] = DirectFunctionCall1(namein, CStringGetDatum(stmt->rule_name));
 	new_record[Anum_pg_abac_rule_priv_privileges - 1] = Int32GetDatum(privilege_mask);
 	new_record[Anum_pg_abac_rule_priv_is_workday - 1] = BoolGetDatum(stmt->is_workday);
+	new_record[Anum_pg_abac_rule_priv_is_worktime - 1] = BoolGetDatum(stmt->is_worktime);
 
 	tuple = heap_form_tuple(pg_abac_rule_priv_dsc, new_record, new_record_nulls);    
 	CatalogTupleInsert(pg_abac_rule_priv_rel, tuple);

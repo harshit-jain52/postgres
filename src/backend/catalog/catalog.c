@@ -26,6 +26,7 @@
 #include "access/transam.h"
 #include "catalog/catalog.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_abac_env_timewindow.h"
 #include "catalog/pg_abac_env_workday.h"
 #include "catalog/pg_abac_rule.h"
 #include "catalog/pg_abac_rule_priv.h"
@@ -311,7 +312,8 @@ bool
 IsSharedRelation(Oid relationId)
 {
 	/* These are the shared catalogs (look for BKI_SHARED_RELATION) */
-	if (relationId == AbacEnvWorkdayRelationId ||
+	if (relationId == AbacEnvTimewindowRelationId ||
+		relationId == AbacEnvWorkdayRelationId ||
 		relationId == AbacRuleRelationId ||
 		relationId == AbacRulePrivRelationId ||
 		relationId == AuthIdRelationId ||
@@ -331,7 +333,8 @@ IsSharedRelation(Oid relationId)
 		relationId == UserAttrValRelationId)
 		return true;
 	/* These are their indexes */
-	if (relationId == AbacEnvWorkdayDayOfWeekIndexId ||
+	if (relationId == AbacEnvTimeWindowPkeyIndexId ||
+		relationId == AbacEnvWorkdayDayOfWeekIndexId ||
 		relationId == AbacRulePkeyIndexId ||
 		relationId == AbacRulePrivOidIndexId ||
 		relationId == AbacRulePrivRulenameIndexId ||

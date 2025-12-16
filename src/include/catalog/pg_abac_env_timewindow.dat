@@ -1,0 +1,11 @@
+#----------------------------------------------------------------------
+#
+# pg_abac_env_timewindow.dat
+#    Initial contents of the pg_abac_env_timewindow system catalog.
+#
+#
+# src/include/catalog/pg_abac_env_timewindow.dat
+#
+#----------------------------------------------------------------------
+
+{ id => '1', start_minute => '0', end_minute => '1439' }

@@ -49,6 +49,7 @@
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
+#include "catalog/pg_abac_env_timewindow.h"
 #include "catalog/pg_abac_env_workday.h"
 #include "catalog/pg_abac_rule.h"
 #include "catalog/pg_authid.h"
@@ -5156,4 +5157,29 @@ bool check_workday()
 	ReleaseSysCache(tuple);
 
 	return is_workday;
+}
+
+bool check_worktime()
+{
+	time_t		rawtime;
+	struct tm  *timeinfo;
+	int			current_min;
+	bool		is_worktime;
+	HeapTuple   tuple;
+	Form_pg_abac_env_timewindow timewindow_form;
+
+	time(&rawtime);
+	timeinfo = localtime(&rawtime);
+	current_min = timeinfo->tm_hour * 60 + timeinfo->tm_min;
+
+	tuple = SearchSysCache1(ABACENVTIMEWINDOW, Int16GetDatum(1));
+	if (!HeapTupleIsValid(tuple))  
+			elog(ERROR, "cache lookup failed for timewindow");
+
+	timewindow_form = (Form_pg_abac_env_timewindow) GETSTRUCT(tuple);
+	is_worktime = (current_min >= timewindow_form->start_minute && current_min <= timewindow_form->end_minute);
+
+	ReleaseSysCache(tuple);
+
+	return is_worktime;
 }

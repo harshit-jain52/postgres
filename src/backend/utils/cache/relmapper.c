@@ -78,7 +78,7 @@
  * now, we just pick a round number that is modestly larger than the expected
  * number of mappings.
  */
-#define MAX_MAPPINGS			64
+#define MAX_MAPPINGS			72
 
 typedef struct RelMapping
 {

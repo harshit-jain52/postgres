@@ -27,7 +27,8 @@ CATALOG(pg_abac_rule_priv,8790,AbacRulePrivRelationId) BKI_SHARED_RELATION BKI_R
 	Oid			oid;			/* oid */  
 	NameData	rulename;		/* Rulename */  
 	int32		privileges;		/* bitmask of privileges (AclMode) */
-	bool		is_workday;		/* value of the environment attribute condition (for simplicity, we only support one environment attribute: is_workday) */ 
+	bool		is_workday;		/* value of the environment attribute condition */
+	bool		is_worktime;	/* value of the environment attribute condition */
 } FormData_pg_abac_rule_priv;  
   
 /* ----------------  
