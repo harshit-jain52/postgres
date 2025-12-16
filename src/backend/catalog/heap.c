@@ -49,6 +49,7 @@
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_partitioned_table.h"
+#include "catalog/pg_resource_attr_val.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_subscription_rel.h"
 #include "catalog/pg_tablespace.h"
@@ -1672,6 +1673,42 @@ DeleteSystemAttributeTuples(Oid relid)
 }
 
 /*
+ *		DeleteResourceAttributeValueTuples
+ *
+ * Remove pg_resource_attr_val rows for the given relid.
+ *
+ * Note: this is used by relation deletion.  It's
+ * not intended for use anyplace else.
+ */
+void DeleteResourceAttributeValueTuples(Oid relid)
+{
+	Relation	attrel;
+	SysScanDesc scan;
+	ScanKeyData key[1];
+	HeapTuple	atttup;
+
+	/* Grab an appropriate lock on the pg_resource_attr_val relation */
+	attrel = table_open(ResourceAttrValRelationId, RowExclusiveLock);
+
+	/* Use the index to scan only attribute of the target relation */
+	ScanKeyInit(&key[0],
+				Anum_pg_resource_attr_val_resource_id,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relid));
+
+	scan = systable_beginscan(attrel, ResourceAttrValPkeyIndexId, true,
+							  NULL, 1, key);
+
+	/* Delete all the matching tuples */
+	while ((atttup = systable_getnext(scan)) != NULL)
+		CatalogTupleDelete(attrel, &atttup->t_self);
+
+	/* Clean up after the scan */
+	systable_endscan(scan);
+	table_close(attrel, RowExclusiveLock);
+}
+
+/*
  *		RemoveAttributeById
  *
  * This is the guts of ALTER TABLE DROP COLUMN: actually mark the attribute
@@ -1924,6 +1961,11 @@ heap_drop_with_catalog(Oid relid)
 	 * delete attribute tuples
 	 */
 	DeleteAttributeTuples(relid);
+
+	/*
+	 * delete resource attribute value tuples
+	 */
+	DeleteResourceAttributeValueTuples(relid);
 
 	/*
 	 * delete relation tuple
