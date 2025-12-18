@@ -240,6 +240,8 @@ extern void RemoveRoleFromObjectACL(Oid roleid, Oid classid, Oid objid);
 extern AclMode pg_class_aclmask(Oid table_oid, Oid roleid,
 								AclMode mask, AclMaskHow how);
 
+extern AclMode pg_class_abac_mask(Oid relid, Oid userid, bool is_workday, bool is_worktime);
+
 /* generic functions */
 extern AclResult object_aclcheck(Oid classid, Oid objectid,
 								 Oid roleid, AclMode mode);

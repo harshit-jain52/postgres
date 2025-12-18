@@ -585,8 +585,6 @@ ExecCheckPermissions(List *rangeTable, List *rteperminfos,
 {
 	ListCell   *l;
 	bool		result = true;
-	bool 		is_workday = check_workday();
-	bool		is_worktime = check_worktime();
 
 #ifdef USE_ASSERT_CHECKING
 	Bitmapset  *indexset = NULL;
@@ -624,7 +622,7 @@ ExecCheckPermissions(List *rangeTable, List *rteperminfos,
 		RTEPermissionInfo *perminfo = lfirst_node(RTEPermissionInfo, l);
 
 		Assert(OidIsValid(perminfo->relid));
-		result = ExecCheckOneRelPerms(perminfo) || ExecCheckOneRelAbacPolicies(perminfo, is_workday, is_worktime);
+		result = ExecCheckOneRelPerms(perminfo);
 		if (!result)
 		{
 			if (ereport_on_violation)
@@ -673,7 +671,7 @@ ExecCheckOneRelPerms(RTEPermissionInfo *perminfo)
 	 * satisfied from column-level rather than relation-level permissions.
 	 * First, remove any bits that are satisfied by relation permissions.
 	 */
-	relPerms = pg_class_aclmask(relOid, userid, requiredPerms, ACLMASK_ALL);
+	relPerms = pg_class_aclmask(relOid, userid, requiredPerms, ACLMASK_ALL) | pg_class_abac_mask(relOid, userid, check_workday(), check_worktime());
 	remainingPerms = requiredPerms & ~relPerms;
 	if (remainingPerms != 0)
 	{
@@ -825,42 +823,6 @@ ExecCheckXactReadOnly(PlannedStmt *plannedstmt)
 
 	if (plannedstmt->commandType != CMD_SELECT || plannedstmt->hasModifyingCTE)
 		PreventCommandIfParallelMode(CreateCommandName((Node *) plannedstmt));
-}
-
-/*
- * ExecCheckOneRelAbacPolicies
- *		Check ABAC access policies for a single relation.
- */
-bool
-ExecCheckOneRelAbacPolicies(RTEPermissionInfo *perminfo, bool is_workday, bool is_worktime){
-	Oid         userid;  
-    Oid         relid = perminfo->relid;  
-    AclMode     requiredPerms = perminfo->requiredPerms;
-	AclMode	 	currentPerms = ACL_NO_RIGHTS;
-	Relation    pg_abac_rule_priv_rel;
-    SysScanDesc scan;
-	HeapTuple   tuple; 
-
-	userid = OidIsValid(perminfo->checkAsUser) ?
-		perminfo->checkAsUser : GetUserId();
-
-	pg_abac_rule_priv_rel = table_open(AbacRulePrivRelationId, AccessShareLock);  
-	scan = systable_beginscan(pg_abac_rule_priv_rel, AbacRulePrivOidIndexId,   
-                              true, NULL, 0, NULL);
-	
-	while (HeapTupleIsValid(tuple = systable_getnext(scan)))  
-    {  
-        Form_pg_abac_rule_priv rule_priv = (Form_pg_abac_rule_priv) GETSTRUCT(tuple);  
-		if (is_workday == rule_priv->is_workday
-			&& is_worktime == rule_priv->is_worktime
-			&& evaluate_abac_rule_conditions(rule_priv->oid, userid, relid))  
-			currentPerms |= rule_priv->privileges;
-		
-    }
-	systable_endscan(scan);
-	table_close(pg_abac_rule_priv_rel, AccessShareLock);
-
-	return ((currentPerms & requiredPerms) == requiredPerms);
 }
 
 /* ----------------------------------------------------------------

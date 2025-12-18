@@ -52,6 +52,7 @@
 #include "catalog/pg_abac_env_timewindow.h"
 #include "catalog/pg_abac_env_workday.h"
 #include "catalog/pg_abac_rule.h"
+#include "catalog/pg_abac_rule_priv.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_database.h"
@@ -3263,6 +3264,37 @@ pg_class_aclmask(Oid table_oid, Oid roleid,
 				 AclMode mask, AclMaskHow how)
 {
 	return pg_class_aclmask_ext(table_oid, roleid, mask, how, NULL);
+}
+
+/*
+ * Routine for evaluating ABAC rules and returning the combined mask
+ */
+AclMode
+pg_class_abac_mask(Oid relid, Oid userid, bool is_workday, bool is_worktime)
+{
+	AclMode	 	currentPerms = ACL_NO_RIGHTS;
+	Relation    pg_abac_rule_priv_rel;
+    SysScanDesc scan;
+	HeapTuple   tuple; 
+
+
+	pg_abac_rule_priv_rel = table_open(AbacRulePrivRelationId, AccessShareLock);  
+	scan = systable_beginscan(pg_abac_rule_priv_rel, AbacRulePrivOidIndexId,   
+                              true, NULL, 0, NULL);
+	
+	while (HeapTupleIsValid(tuple = systable_getnext(scan)))  
+    {  
+        Form_pg_abac_rule_priv rule_priv = (Form_pg_abac_rule_priv) GETSTRUCT(tuple);  
+		if (is_workday == rule_priv->is_workday
+			&& is_worktime == rule_priv->is_worktime
+			&& evaluate_abac_rule_conditions(rule_priv->oid, userid, relid))  
+			currentPerms |= rule_priv->privileges;
+		
+    }
+	systable_endscan(scan);
+	table_close(pg_abac_rule_priv_rel, AccessShareLock);
+
+	return currentPerms;
 }
 
 /*
