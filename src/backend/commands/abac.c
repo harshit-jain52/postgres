@@ -977,6 +977,8 @@ string_to_privilege(const char *privname){
 		return ACL_UPDATE;
 	if (strcmp(privname, "delete") == 0)
 		return ACL_DELETE;
+	if (strcmp(privname, "usage") == 0)
+		return ACL_USAGE;
 	ereport(ERROR,
 			(errcode(ERRCODE_SYNTAX_ERROR),
 			 errmsg("unrecognized privilege type \"%s\"", privname)));

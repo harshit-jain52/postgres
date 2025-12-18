@@ -4063,6 +4063,34 @@ pg_class_aclcheck(Oid table_oid, Oid roleid, AclMode mode)
 	return pg_class_aclcheck_ext(table_oid, roleid, mode, NULL);
 }
 
+
+AclResult
+pg_class_abac_check(Oid relid, Oid userid, AclMode mode, bool is_workday, bool is_worktime)
+{
+	Relation    pg_abac_rule_priv_rel;
+    SysScanDesc scan;
+	HeapTuple   tuple; 
+
+	pg_abac_rule_priv_rel = table_open(AbacRulePrivRelationId, AccessShareLock);  
+	scan = systable_beginscan(pg_abac_rule_priv_rel, AbacRulePrivOidIndexId,   
+                              true, NULL, 0, NULL);
+	
+	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
+    {  
+        Form_pg_abac_rule_priv rule_priv = (Form_pg_abac_rule_priv) GETSTRUCT(tuple);  
+		if (is_workday == rule_priv->is_workday
+			&& is_worktime == rule_priv->is_worktime
+			&& evaluate_abac_rule_conditions(rule_priv->oid, userid, relid))  
+			if(mode & rule_priv->privileges){
+				systable_endscan(scan);
+				table_close(pg_abac_rule_priv_rel, AccessShareLock);
+				return ACLCHECK_OK;
+			}
+    }
+
+	return ACLCHECK_NO_PRIV;
+}
+
 /*
  * Exported routine for checking a user's access privileges to a table,
  * with is_missing

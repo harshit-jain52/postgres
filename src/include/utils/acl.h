@@ -261,6 +261,7 @@ extern AclResult pg_attribute_aclcheck_all_ext(Oid table_oid, Oid roleid,
 											   AclMode mode, AclMaskHow how,
 											   bool *is_missing);
 extern AclResult pg_class_aclcheck(Oid table_oid, Oid roleid, AclMode mode);
+extern AclResult pg_class_abac_check(Oid relid, Oid userid, AclMode mode, bool is_workday, bool is_worktime);
 extern AclResult pg_class_aclcheck_ext(Oid table_oid, Oid roleid,
 									   AclMode mode, bool *is_missing);
 extern AclResult pg_parameter_aclcheck(const char *name, Oid roleid,
