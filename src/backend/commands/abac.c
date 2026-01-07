@@ -218,7 +218,10 @@ DropUserAttribute(ParseState *pstate, DropUserAttributeStmt *stmt)
                 (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),  
                  errmsg("must be superuser to drop user attribute")));  
   
-    attr_oid = get_user_attr_oid(stmt->attribute, false);  
+    attr_oid = get_user_attr_oid(stmt->attribute, stmt->missing_ok);
+	
+	if (!OidIsValid(attr_oid) && stmt->missing_ok)
+		return;
   
     /* Check if attribute is used in any ABAC rules */  
     pg_abac_rule_rel = table_open(AbacRuleRelationId, AccessShareLock);  
@@ -303,8 +306,11 @@ void DropResourceAttribute(ParseState *pstate, DropResourceAttributeStmt *stmt){
                 (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),  
                  errmsg("must be superuser to drop resource attribute")));  
   
-    attr_oid = get_resource_attr_oid(stmt->attribute, false);  
-  
+    attr_oid = get_resource_attr_oid(stmt->attribute, stmt->missing_ok);
+	
+	if (!OidIsValid(attr_oid) && stmt->missing_ok)
+		return;
+
     /* Check if attribute is used in any ABAC rules */  
     pg_abac_rule_rel = table_open(AbacRuleRelationId, AccessShareLock);  
   
@@ -1084,9 +1090,12 @@ void DropAbacRule(ParseState *pstate, DropAbacRuleStmt *stmt){
         ereport(ERROR,
                 (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
                  errmsg("must be superuser to drop ABAC rule")));
-  
-    rule_priv_oid = get_abac_rule_oid(stmt->rule_name, false);
-  
+
+    rule_priv_oid = get_abac_rule_oid(stmt->rule_name, stmt->missing_ok);
+
+	if (!OidIsValid(rule_priv_oid) && stmt->missing_ok)
+		return;
+
     pg_abac_rule_rel = table_open(AbacRuleRelationId, RowExclusiveLock);
     pg_abac_rule_priv_rel = table_open(AbacRulePrivRelationId, RowExclusiveLock);
   

@@ -1582,10 +1582,11 @@ CreateUserAttributeStmt:
  *****************************************************************************/
 
 DropUserAttributeStmt:
-			DROP USER_ATTRIBUTE name
+			DROP USER_ATTRIBUTE name opt_if_exists
 				{
 					DropUserAttributeStmt *n = makeNode(DropUserAttributeStmt);
 					n->attribute = $3;
+					n->missing_ok = $4;
 					$$ = (Node *) n;
 				}
 		;		
@@ -1612,10 +1613,11 @@ CreateResourceAttributeStmt:
  *****************************************************************************/
 
 DropResourceAttributeStmt:
-			DROP RESOURCE_ATTRIBUTE name
+			DROP RESOURCE_ATTRIBUTE name opt_if_exists
 				{
 					DropResourceAttributeStmt *n = makeNode(DropResourceAttributeStmt);
 					n->attribute = $3;
+					n->missing_ok = $4;
 					$$ = (Node *) n;
 				}
 		;
@@ -1776,10 +1778,11 @@ value_any:
  *****************************************************************************/
 
 DropAbacRuleStmt:
-			DROP ABAC_RULE name
+			DROP ABAC_RULE name opt_if_exists
 			{
 				DropAbacRuleStmt *n = makeNode(DropAbacRuleStmt);
 				n -> rule_name = $3;
+				n -> missing_ok = $4;
 				$$ = (Node *) n;
 			}
 		;

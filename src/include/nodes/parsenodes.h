@@ -3226,7 +3226,7 @@ typedef struct DropUserAttributeStmt
 {
 	NodeTag		type;
 	char 	*attribute;
-	
+	bool	missing_ok;		/* skip error if missing? */
 } DropUserAttributeStmt;
 
 typedef struct GrantUserAttributeStmt
@@ -3255,7 +3255,7 @@ typedef struct DropResourceAttributeStmt
 {
 	NodeTag		type;
 	char 	*attribute;
-	
+	bool	missing_ok;		/* skip error if missing? */
 } DropResourceAttributeStmt;
 
 typedef struct GrantResourceAttributeStmt
@@ -3305,6 +3305,7 @@ typedef struct DropAbacRuleStmt
 {
 	NodeTag		type;
 	char	   *rule_name;
+	bool		missing_ok;		/* skip error if missing? */
 } DropAbacRuleStmt;
 
 /* ----------------------
