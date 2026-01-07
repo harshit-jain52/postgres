@@ -24,7 +24,7 @@
  */
 CATALOG(pg_resource_attr_val, 8760, ResourceAttrValRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OID(8763, ResourceAttrValRelation_Rowtype_Id) BKI_SCHEMA_MACRO
 {
-    Oid resource_id BKI_LOOKUP(pg_class);      /* foreign key to oid in pg_class */
+    Oid resource_id;
     Oid attr_id BKI_LOOKUP(pg_resource_attr);   /* foreign key to oid in pg_resource_attr */
 
     /* remaining fields may be null; use heap_getattr to read them! */

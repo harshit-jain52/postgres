@@ -32,6 +32,7 @@
 #include "catalog/pg_class.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_db_role_setting.h"
+#include "catalog/pg_proc.h"
 #include "commands/abac.h"
 #include "commands/comment.h"
 #include "commands/dbcommands.h"
@@ -433,7 +434,7 @@ void AddRoleUserAttr(Oid roleid, Oid attrid, const char* value)
 	table_close(pg_user_attr_val_rel, NoLock);
 }
 
-void AddRelResourceAttr(Oid relid, Oid attrid, const char* value)
+void AddResourceAttr(Oid resource_id, Oid attrid, const char* value)
 {
 	Relation	pg_resource_attr_val_rel;
 	TupleDesc	pg_resource_attr_val_dsc;
@@ -441,7 +442,7 @@ void AddRelResourceAttr(Oid relid, Oid attrid, const char* value)
 	HeapTuple	newtuple;
 	ScanKeyData	skey[2];  
 	SysScanDesc	scan;
-	Datum		relid_datum;
+	Datum		resource_id_datum;
 	Datum		attrid_datum;
 	Datum		value_datum;
 	Datum		new_record[Natts_pg_resource_attr_val] = {0};  
@@ -451,14 +452,14 @@ void AddRelResourceAttr(Oid relid, Oid attrid, const char* value)
 	pg_resource_attr_val_rel = table_open(ResourceAttrValRelationId, RowExclusiveLock);  
 	pg_resource_attr_val_dsc = RelationGetDescr(pg_resource_attr_val_rel);  
 
-	relid_datum = ObjectIdGetDatum(relid);
+	resource_id_datum = ObjectIdGetDatum(resource_id);
 	attrid_datum = ObjectIdGetDatum(attrid);
 	value_datum = DirectFunctionCall1(textin, CStringGetDatum(value));
 
 	ScanKeyInit(&skey[0],
 				Anum_pg_resource_attr_val_resource_id,
 				BTEqualStrategyNumber, F_OIDEQ,
-				relid_datum);
+				resource_id_datum);
 	ScanKeyInit(&skey[1],
 				Anum_pg_resource_attr_val_attr_id,
 				BTEqualStrategyNumber, F_OIDEQ,
@@ -479,7 +480,7 @@ void AddRelResourceAttr(Oid relid, Oid attrid, const char* value)
 	}  
 	else
 	{
-		new_record[Anum_pg_resource_attr_val_resource_id - 1] = relid_datum;
+		new_record[Anum_pg_resource_attr_val_resource_id - 1] = resource_id_datum;
 		new_record[Anum_pg_resource_attr_val_attr_id - 1] = attrid_datum;
 		new_record[Anum_pg_resource_attr_val_value - 1] = value_datum;
 
@@ -552,39 +553,74 @@ void GrantUserAttribute(ParseState *pstate, GrantUserAttributeStmt *stmt){
 }
 
 void GrantResourceAttribute(ParseState *pstate, GrantResourceAttributeStmt *stmt){
-	Relation	pg_class_rel;  
-	Relation	pg_resource_attr_rel;  
-	ListCell   *item;  
-	Oid			currentUserId = GetUserId();
-  
-	pg_class_rel = table_open(RelationRelationId, AccessShareLock);  
-	pg_resource_attr_rel = table_open(ResourceAttrRelationId, AccessShareLock);  
-  
-	foreach(item, stmt->grantees)  
-	{  
-		RangeVar   *relvar = (RangeVar *) lfirst(item);  
-		Oid			relid;  
-		Oid			attrid;  
-		
-		relid = RangeVarGetRelid(relvar, NoLock, false);
-		/*
-		* Grantor must be a superuser or the resource owner
-		*/
-		if(!superuser_arg(currentUserId) && !object_ownercheck(RelationRelationId, relid, currentUserId))
-			ereport(ERROR,
-					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 errmsg("must be superuser or resource owner to grant attribute to relation \"%s\"",
-							relvar->relname)));
+    Relation    pg_class_rel;
+    Relation    pg_resource_attr_rel;
+    ListCell   *item;
+    Oid         currentUserId = GetUserId();
 
-		attrid = get_resource_attr_oid(stmt->attribute, false);
-		AddRelResourceAttr(relid, attrid, stmt->value);
-	}
+    pg_class_rel = table_open(RelationRelationId, AccessShareLock);
+    pg_resource_attr_rel = table_open(ResourceAttrRelationId, AccessShareLock);
 
-	/*
-	 * Close relations, but keep lock till commit.  
-	 */  
-	table_close(pg_class_rel, NoLock);  
-	table_close(pg_resource_attr_rel, NoLock); 
+    foreach(item, stmt->grantees)
+    {
+        Oid         resource_id;
+        Oid         attrid;
+
+        switch (stmt->resource_type)
+        {
+            case OBJECT_TABLE:
+            case OBJECT_VIEW:
+            case OBJECT_SEQUENCE:
+            {
+                RangeVar   *relvar = (RangeVar *) lfirst(item);
+                resource_id = RangeVarGetRelid(relvar, NoLock, false);
+                  
+                /*  
+                 * Grantor must be a superuser or the resource owner  
+                 */
+                if(!superuser_arg(currentUserId) &&
+                   !object_ownercheck(RelationRelationId, resource_id, currentUserId))
+                    ereport(ERROR,
+                            (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+                             errmsg("must be superuser or resource owner to grant attribute to relation \"%s\"",
+                                 relvar->relname)));
+                break;
+            }  
+            case OBJECT_FUNCTION:
+			{
+				ObjectWithArgs *fwa = (ObjectWithArgs *) lfirst(item);
+				ObjectAddress address;
+
+				address = get_object_address(OBJECT_FUNCTION,
+											(Node *) fwa,
+											NULL,
+											AccessShareLock,
+											false);
+
+				resource_id = address.objectId;
+
+				if (!superuser_arg(currentUserId) &&
+					!object_ownercheck(ProcedureRelationId,
+									resource_id,
+									currentUserId))
+					ereport(ERROR,
+							(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+							errmsg("must be superuser or function owner to grant attribute to function")));
+				break;
+			}
+            default:
+                elog(ERROR, "unsupported resource type: %d", stmt->resource_type);
+        }  
+
+        attrid = get_resource_attr_oid(stmt->attribute, false);
+        AddResourceAttr(resource_id, attrid, stmt->value);
+    }
+
+    /*
+     * Close relations, but keep lock till commit.
+     */
+    table_close(pg_class_rel, NoLock);
+    table_close(pg_resource_attr_rel, NoLock);
 }
 
 void
@@ -647,7 +683,7 @@ DelRoleUserAttr(Oid roleid, Oid attrid, const char* value, const char* attr_name
 }
 
 void
-DelRelResourceAttr(Oid relid, Oid attrid, const char* value, const char* attr_name, const char* relname)
+DelResourceAttr(Oid resource_id, Oid attrid, const char* value, const char* attr_name)
 {
 	Relation    pg_resource_attr_val_rel;
 	TupleDesc   pg_resource_attr_val_dsc;
@@ -662,7 +698,7 @@ DelRelResourceAttr(Oid relid, Oid attrid, const char* value, const char* attr_na
     ScanKeyInit(&skey[0],
                 Anum_pg_resource_attr_val_resource_id,
                 BTEqualStrategyNumber, F_OIDEQ,
-                ObjectIdGetDatum(relid));
+                ObjectIdGetDatum(resource_id));
     ScanKeyInit(&skey[1],
                 Anum_pg_resource_attr_val_attr_id,
                 BTEqualStrategyNumber, F_OIDEQ,
@@ -700,8 +736,7 @@ DelRelResourceAttr(Oid relid, Oid attrid, const char* value, const char* attr_na
     if (!found)
     {
         ereport(WARNING,
-                (errmsg("attribute \"%s\" with specified value not found for relation %s",
-                        attr_name, relname)));
+                (errmsg("attribute \"%s\" with specified value not found for the resource", attr_name)));
     }
 }
 
@@ -743,39 +778,74 @@ void RevokeUserAttribute(ParseState *pstate, RevokeUserAttributeStmt *stmt){
 }
 
 void RevokeResourceAttribute(ParseState *pstate, RevokeResourceAttributeStmt *stmt){
-	Relation	pg_class_rel;  
-	Relation	pg_resource_attr_rel;  
-	ListCell   *item;  
-	Oid			currentUserId = GetUserId();
-  
-	pg_class_rel = table_open(RelationRelationId, AccessShareLock);  
-	pg_resource_attr_rel = table_open(ResourceAttrRelationId, AccessShareLock);  
-  
-	foreach(item, stmt->grantees)  
-	{  
-		RangeVar   *relvar = (RangeVar *) lfirst(item);  
-		Oid			relid;  
-		Oid			attrid;  
-		
-		relid = RangeVarGetRelid(relvar, NoLock, false);
-		/*
-		* Revoker must be a superuser or the resource owner
-		*/
-		if(!superuser_arg(currentUserId) && !object_ownercheck(RelationRelationId, relid, currentUserId))
-			ereport(ERROR,
-					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 errmsg("must be superuser or resource owner to revoke attribute from relation \"%s\"",
-							relvar->relname)));
+	Relation    pg_class_rel;
+    Relation    pg_resource_attr_rel;
+    ListCell   *item;
+    Oid         currentUserId = GetUserId();
 
-		attrid = get_resource_attr_oid(stmt->attribute, false);
-		DelRelResourceAttr(relid, attrid, stmt->value, stmt->attribute, relvar->relname);
-	}
+    pg_class_rel = table_open(RelationRelationId, AccessShareLock);
+    pg_resource_attr_rel = table_open(ResourceAttrRelationId, AccessShareLock);
 
-	/*
-	 * Close relations, but keep lock till commit.  
-	 */  
-	table_close(pg_class_rel, NoLock);  
-	table_close(pg_resource_attr_rel, NoLock);	
+    foreach(item, stmt->grantees)
+    {
+        Oid         resource_id;
+        Oid         attrid;
+
+        switch (stmt->resource_type)
+        {
+            case OBJECT_TABLE:
+            case OBJECT_VIEW:
+            case OBJECT_SEQUENCE:
+            {
+                RangeVar   *relvar = (RangeVar *) lfirst(item);
+                resource_id = RangeVarGetRelid(relvar, NoLock, false);
+                  
+                /*  
+                 * Revoker must be a superuser or the resource owner  
+                 */
+                if(!superuser_arg(currentUserId) &&
+                   !object_ownercheck(RelationRelationId, resource_id, currentUserId))
+                    ereport(ERROR,
+                            (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+                             errmsg("must be superuser or resource owner to revoke attribute from relation \"%s\"",
+                                 relvar->relname)));
+                break;
+            }  
+            case OBJECT_FUNCTION:
+			{
+				ObjectWithArgs *fwa = (ObjectWithArgs *) lfirst(item);
+				ObjectAddress address;
+
+				address = get_object_address(OBJECT_FUNCTION,
+											(Node *) fwa,
+											NULL,
+											AccessShareLock,
+											false);
+
+				resource_id = address.objectId;
+
+				if (!superuser_arg(currentUserId) &&
+					!object_ownercheck(ProcedureRelationId,
+									resource_id,
+									currentUserId))
+					ereport(ERROR,
+							(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+							errmsg("must be superuser or function owner to revoke attribute from function")));
+				break;
+			}
+            default:
+                elog(ERROR, "unsupported resource type: %d", stmt->resource_type);
+        }  
+
+        attrid = get_resource_attr_oid(stmt->attribute, false);
+        DelResourceAttr(resource_id, attrid, stmt->value, stmt->attribute);
+    }
+
+    /*
+     * Close relations, but keep lock till commit.
+     */
+    table_close(pg_class_rel, NoLock);
+    table_close(pg_resource_attr_rel, NoLock);
 }
 
 void SetEnvAttribute(ParseState *pstate, SetEnvAttributeStmt *stmt){
@@ -985,6 +1055,8 @@ string_to_privilege(const char *privname){
 		return ACL_DELETE;
 	if (strcmp(privname, "usage") == 0)
 		return ACL_USAGE;
+	if (strcmp(privname, "execute") == 0)
+		return ACL_EXECUTE;
 	ereport(ERROR,
 			(errcode(ERRCODE_SYNTAX_ERROR),
 			 errmsg("unrecognized privilege type \"%s\"", privname)));

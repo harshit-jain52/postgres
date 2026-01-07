@@ -647,10 +647,8 @@ nextval_internal(Oid relid, bool check_permissions)
 	init_sequence(relid, &elm, &seqrel);
 
 	if (check_permissions &&
-		(pg_class_aclcheck(elm->relid, GetUserId(),
-						  ACL_USAGE | ACL_UPDATE) != ACLCHECK_OK
-		&& pg_class_abac_check(elm->relid, GetUserId(),
-								ACL_USAGE | ACL_UPDATE, check_workday(), check_worktime()) != ACLCHECK_OK))
+		pg_class_aclcheck(elm->relid, GetUserId(),
+						  ACL_USAGE | ACL_UPDATE) != ACLCHECK_OK)
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied for sequence %s",
@@ -876,9 +874,7 @@ currval_oid(PG_FUNCTION_ARGS)
 	init_sequence(relid, &elm, &seqrel);
 
 	if (pg_class_aclcheck(elm->relid, GetUserId(),
-						  ACL_SELECT | ACL_USAGE) != ACLCHECK_OK
-		&& pg_class_abac_check(elm->relid, GetUserId(),
-								ACL_SELECT | ACL_USAGE, check_workday(), check_worktime()) != ACLCHECK_OK)
+						  ACL_SELECT | ACL_USAGE) != ACLCHECK_OK)
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied for sequence %s",
@@ -920,9 +916,7 @@ lastval(PG_FUNCTION_ARGS)
 	Assert(last_used_seq->last_valid);
 
 	if (pg_class_aclcheck(last_used_seq->relid, GetUserId(),
-						  ACL_SELECT | ACL_USAGE) != ACLCHECK_OK
-		&& pg_class_abac_check(last_used_seq->relid, GetUserId(),
-						ACL_SELECT | ACL_USAGE, check_workday(), check_worktime()) != ACLCHECK_OK)
+						  ACL_SELECT | ACL_USAGE) != ACLCHECK_OK)
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied for sequence %s",
@@ -963,9 +957,7 @@ do_setval(Oid relid, int64 next, bool iscalled)
 	/* open and lock sequence */
 	init_sequence(relid, &elm, &seqrel);
 
-	if (pg_class_aclcheck(elm->relid, GetUserId(), ACL_UPDATE) != ACLCHECK_OK
-		&& pg_class_abac_check(elm->relid, GetUserId(),
-								ACL_UPDATE, check_workday(), check_worktime()) != ACLCHECK_OK)
+	if (pg_class_aclcheck(elm->relid, GetUserId(), ACL_UPDATE) != ACLCHECK_OK)
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied for sequence %s",
@@ -1755,9 +1747,7 @@ pg_sequence_parameters(PG_FUNCTION_ARGS)
 	HeapTuple	pgstuple;
 	Form_pg_sequence pgsform;
 
-	if (pg_class_aclcheck(relid, GetUserId(), ACL_SELECT | ACL_UPDATE | ACL_USAGE) != ACLCHECK_OK
-		&& pg_class_abac_check(relid, GetUserId(), ACL_SELECT | ACL_UPDATE | ACL_USAGE,
-			check_workday(), check_worktime()) != ACLCHECK_OK)
+	if (pg_class_aclcheck(relid, GetUserId(), ACL_SELECT | ACL_UPDATE | ACL_USAGE) != ACLCHECK_OK)
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied for sequence %s",
@@ -1819,9 +1809,7 @@ pg_get_sequence_data(PG_FUNCTION_ARGS)
 	 * Return all NULLs for sequences for which we lack privileges, other
 	 * sessions' temporary sequences, and unlogged sequences on standbys.
 	 */
-	if ((pg_class_aclcheck(relid, GetUserId(), ACL_SELECT) == ACLCHECK_OK
-		|| pg_class_abac_check(relid, GetUserId(), ACL_SELECT,
-			check_workday(), check_worktime()) == ACLCHECK_OK) &&
+	if (pg_class_aclcheck(relid, GetUserId(), ACL_SELECT) == ACLCHECK_OK &&
 		!RELATION_IS_OTHER_TEMP(seqrel) &&
 		(RelationIsPermanent(seqrel) || !RecoveryInProgress()))
 	{
@@ -1874,9 +1862,7 @@ pg_sequence_last_value(PG_FUNCTION_ARGS)
 	 * unlogged sequences on standbys and for sequences for which the current
 	 * user lacks privileges instead of throwing an error.
 	 */
-	if ((pg_class_aclcheck(relid, GetUserId(), ACL_SELECT | ACL_USAGE) == ACLCHECK_OK
-		|| pg_class_abac_check(relid, GetUserId(), ACL_SELECT | ACL_USAGE,
-			check_workday(), check_worktime()) == ACLCHECK_OK) &&
+	if (pg_class_aclcheck(relid, GetUserId(), ACL_SELECT | ACL_USAGE) == ACLCHECK_OK &&
 		!RELATION_IS_OTHER_TEMP(seqrel) &&
 		(RelationIsPermanent(seqrel) || !RecoveryInProgress()))
 	{

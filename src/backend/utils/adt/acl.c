@@ -2126,7 +2126,6 @@ has_sequence_privilege_name_name(PG_FUNCTION_ARGS)
 						text_to_cstring(sequencename))));
 
 	aclresult = pg_class_aclcheck(sequenceoid, roleid, mode);
-	if(aclresult != ACLCHECK_OK) aclresult = pg_class_abac_check(sequenceoid, roleid, mode, check_workday(), check_worktime());
 
 	PG_RETURN_BOOL(aclresult == ACLCHECK_OK);
 }
@@ -2157,7 +2156,6 @@ has_sequence_privilege_name(PG_FUNCTION_ARGS)
 						text_to_cstring(sequencename))));
 
 	aclresult = pg_class_aclcheck(sequenceoid, roleid, mode);
-	if(aclresult != ACLCHECK_OK) aclresult = pg_class_abac_check(sequenceoid, roleid, mode, check_workday(), check_worktime());
 
 	PG_RETURN_BOOL(aclresult == ACLCHECK_OK);
 }
@@ -2195,8 +2193,6 @@ has_sequence_privilege_name_id(PG_FUNCTION_ARGS)
 	if (is_missing)
 		PG_RETURN_NULL();
 
-	if(aclresult != ACLCHECK_OK) aclresult = pg_class_abac_check(sequenceoid, roleid, mode, check_workday(), check_worktime());
-
 	PG_RETURN_BOOL(aclresult == ACLCHECK_OK);
 }
 
@@ -2233,8 +2229,6 @@ has_sequence_privilege_id(PG_FUNCTION_ARGS)
 	if (is_missing)
 		PG_RETURN_NULL();
 
-	if(aclresult != ACLCHECK_OK) aclresult = pg_class_abac_check(sequenceoid, roleid, mode, check_workday(), check_worktime());
-	
 	PG_RETURN_BOOL(aclresult == ACLCHECK_OK);
 }
 
@@ -2262,7 +2256,6 @@ has_sequence_privilege_id_name(PG_FUNCTION_ARGS)
 						text_to_cstring(sequencename))));
 
 	aclresult = pg_class_aclcheck(sequenceoid, roleid, mode);
-	if(aclresult != ACLCHECK_OK) aclresult = pg_class_abac_check(sequenceoid, roleid, mode, check_workday(), check_worktime());
 
 	PG_RETURN_BOOL(aclresult == ACLCHECK_OK);
 }
@@ -2297,8 +2290,6 @@ has_sequence_privilege_id_id(PG_FUNCTION_ARGS)
 
 	if (is_missing)
 		PG_RETURN_NULL();
-	
-	if(aclresult != ACLCHECK_OK) aclresult = pg_class_abac_check(sequenceoid, roleid, mode, check_workday(), check_worktime());
 	
 	PG_RETURN_BOOL(aclresult == ACLCHECK_OK);
 }

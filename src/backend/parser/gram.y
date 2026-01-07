@@ -679,6 +679,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <defelt> attribute_pair
 %type <list> attribute_pair_list user_attribute_clause resource_attribute_clause user_attribute_clause_opt resource_attribute_clause_opt attribute_clause
 %type <boolean> is_workday_value is_worktime_value
+%type <objtype> relation_type
 /*
  * Non-keyword token types.  These are hard-wired into the "flex" lexer.
  * They must be listed first so that their numeric codes do not depend on
@@ -1639,14 +1640,23 @@ GrantUserAttributeStmt:
 				}
 		;		
 
-
 GrantResourceAttributeStmt:
-			GRANT RESOURCE_ATTRIBUTE '{' name '=' NonReservedWord '}' TO qualified_name_list
+			GRANT RESOURCE_ATTRIBUTE '{' name '=' NonReservedWord '}' TO relation_type qualified_name_list
 				{
 					GrantResourceAttributeStmt *n = makeNode(GrantResourceAttributeStmt);
 					n->attribute = $4;
 					n->value = $6;
-					n->grantees = $9;
+					n->resource_type = $9;
+					n->grantees = $10;
+					$$ = (Node *) n;
+				}
+		|	GRANT RESOURCE_ATTRIBUTE '{' name '=' NonReservedWord '}' TO FUNCTION function_with_argtypes_list
+				{
+					GrantResourceAttributeStmt *n = makeNode(GrantResourceAttributeStmt);
+					n->attribute = $4;
+					n->value = $6;
+					n->resource_type = OBJECT_FUNCTION;
+					n->grantees = $10;
 					$$ = (Node *) n;
 				}
 		;
@@ -1663,12 +1673,22 @@ RevokeUserAttributeStmt:
 		;
 
 RevokeResourceAttributeStmt:
-			REVOKE RESOURCE_ATTRIBUTE '{' name '=' value_all '}' FROM qualified_name_list
+			REVOKE RESOURCE_ATTRIBUTE '{' name '=' value_all '}' FROM relation_type qualified_name_list
 				{
 					RevokeResourceAttributeStmt *n = makeNode(RevokeResourceAttributeStmt);
 					n->attribute = $4;
 					n->value = $6;
-					n->grantees = $9;
+					n->resource_type = $9;
+					n->grantees = $10;
+					$$ = (Node *) n;
+				}
+		|	REVOKE RESOURCE_ATTRIBUTE '{' name '=' value_all '}' FROM FUNCTION function_with_argtypes_list
+				{
+					RevokeResourceAttributeStmt *n = makeNode(RevokeResourceAttributeStmt);
+					n->attribute = $4;
+					n->value = $6;
+					n->resource_type = OBJECT_FUNCTION;
+					n->grantees = $10;
 					$$ = (Node *) n;
 				}
 		;
@@ -1676,6 +1696,12 @@ RevokeResourceAttributeStmt:
 value_all:
 		NonReservedWord
 		| ALL 			{ $$ = pstrdup($1); }
+		;
+
+relation_type:
+			TABLE									{ $$ = OBJECT_TABLE; }
+			| VIEW									{ $$ = OBJECT_VIEW; }
+			| SEQUENCE								{ $$ = OBJECT_SEQUENCE; }
 		;
 
 /*****************************************************************************

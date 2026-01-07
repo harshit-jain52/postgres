@@ -3270,7 +3270,7 @@ pg_class_aclmask(Oid table_oid, Oid roleid,
  * Routine for evaluating ABAC rules and returning the combined mask
  */
 AclMode
-pg_class_abac_mask(Oid relid, Oid userid, bool is_workday, bool is_worktime)
+pg_abac_mask(Oid resourceid, Oid userid, bool is_workday, bool is_worktime)
 {
 	AclMode	 	currentPerms = ACL_NO_RIGHTS;
 	Relation    pg_abac_rule_priv_rel;
@@ -3287,7 +3287,7 @@ pg_class_abac_mask(Oid relid, Oid userid, bool is_workday, bool is_worktime)
         Form_pg_abac_rule_priv rule_priv = (Form_pg_abac_rule_priv) GETSTRUCT(tuple);  
 		if (is_workday == rule_priv->is_workday
 			&& is_worktime == rule_priv->is_worktime
-			&& evaluate_abac_rule_conditions(rule_priv->oid, userid, relid))  
+			&& evaluate_abac_rule_conditions(rule_priv->oid, userid, resourceid))  
 			currentPerms |= rule_priv->privileges;
 		
     }
@@ -3869,11 +3869,25 @@ object_aclcheck_ext(Oid classid, Oid objectid,
 					Oid roleid, AclMode mode,
 					bool *is_missing)
 {
-	if (object_aclmask_ext(classid, objectid, roleid, mode, ACLMASK_ANY,
-						   is_missing) != 0)
-		return ACLCHECK_OK;
-	else
-		return ACLCHECK_NO_PRIV;
+	ObjectType objtype = get_object_type(classid, objectid);
+	switch(objtype) {
+		case OBJECT_TABLE:
+		case OBJECT_VIEW:
+		case OBJECT_SEQUENCE:
+		case OBJECT_FUNCTION:
+			if ((object_aclmask_ext(classid, objectid, roleid, mode, ACLMASK_ANY,
+							is_missing) | (mode & pg_abac_mask(objectid, roleid, check_workday(), check_worktime()))) != 0)
+				return ACLCHECK_OK;
+			else
+				return ACLCHECK_NO_PRIV;
+			break;
+		default:
+			if (object_aclmask_ext(classid, objectid, roleid, mode, ACLMASK_ANY,
+							is_missing) != 0)
+				return ACLCHECK_OK;
+			else
+				return ACLCHECK_NO_PRIV;
+	}
 }
 
 /*
@@ -4064,33 +4078,6 @@ pg_class_aclcheck(Oid table_oid, Oid roleid, AclMode mode)
 }
 
 
-AclResult
-pg_class_abac_check(Oid relid, Oid userid, AclMode mode, bool is_workday, bool is_worktime)
-{
-	Relation    pg_abac_rule_priv_rel;
-    SysScanDesc scan;
-	HeapTuple   tuple; 
-
-	pg_abac_rule_priv_rel = table_open(AbacRulePrivRelationId, AccessShareLock);  
-	scan = systable_beginscan(pg_abac_rule_priv_rel, AbacRulePrivOidIndexId,   
-                              true, NULL, 0, NULL);
-	
-	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
-    {  
-        Form_pg_abac_rule_priv rule_priv = (Form_pg_abac_rule_priv) GETSTRUCT(tuple);  
-		if (is_workday == rule_priv->is_workday
-			&& is_worktime == rule_priv->is_worktime
-			&& evaluate_abac_rule_conditions(rule_priv->oid, userid, relid))  
-			if(mode & rule_priv->privileges){
-				systable_endscan(scan);
-				table_close(pg_abac_rule_priv_rel, AccessShareLock);
-				return ACLCHECK_OK;
-			}
-    }
-
-	return ACLCHECK_NO_PRIV;
-}
-
 /*
  * Exported routine for checking a user's access privileges to a table,
  * with is_missing
@@ -4099,8 +4086,8 @@ AclResult
 pg_class_aclcheck_ext(Oid table_oid, Oid roleid,
 					  AclMode mode, bool *is_missing)
 {
-	if (pg_class_aclmask_ext(table_oid, roleid, mode,
-							 ACLMASK_ANY, is_missing) != 0)
+	if ((pg_class_aclmask_ext(table_oid, roleid, mode,
+							 ACLMASK_ANY, is_missing) | (mode & pg_abac_mask(table_oid, roleid, check_workday(), check_worktime()))) != 0)
 		return ACLCHECK_OK;
 	else
 		return ACLCHECK_NO_PRIV;
@@ -5044,7 +5031,7 @@ RemoveRoleFromInitPriv(Oid roleid, Oid classid, Oid objid, int32 objsubid)
 }
 
 bool
-evaluate_abac_rule_conditions(Oid rule_id, Oid userid, Oid relid){
+evaluate_abac_rule_conditions(Oid rule_id, Oid userid, Oid resourceid){
 	Relation    pg_abac_rule_rel;
 	TupleDesc	pg_abac_rule_dsc;
     ScanKeyData skey[1];  
@@ -5082,7 +5069,7 @@ evaluate_abac_rule_conditions(Oid rule_id, Oid userid, Oid relid){
 				}  
 			}  
 			else {  
-				if (!check_resource_attribute_condition(relid, rule->attr_id, value_cstr))  
+				if (!check_resource_attribute_condition(resourceid, rule->attr_id, value_cstr))  
 				{  
 					all_conditions_met = false;  
 					break;  
@@ -5145,7 +5132,7 @@ bool check_user_attribute_condition(Oid userid, Oid attr_id, const char *expecte
 	return condition_met;
 }
 
-bool check_resource_attribute_condition(Oid relid, Oid attr_id, const char *expected_value) {
+bool check_resource_attribute_condition(Oid resource_id, Oid attr_id, const char *expected_value) {
 	Relation    pg_res_attr_val_rel;
 	TupleDesc	pg_res_attr_val_dsc;
 	ScanKeyData skey[2];  
@@ -5163,7 +5150,7 @@ bool check_resource_attribute_condition(Oid relid, Oid attr_id, const char *expe
 	ScanKeyInit(&skey[0],  
 				Anum_pg_resource_attr_val_resource_id,  
 				BTEqualStrategyNumber, F_OIDEQ,  
-				ObjectIdGetDatum(relid));  
+				ObjectIdGetDatum(resource_id));  
 	ScanKeyInit(&skey[1],  
 				Anum_pg_resource_attr_val_attr_id,  
 				BTEqualStrategyNumber, F_OIDEQ,  

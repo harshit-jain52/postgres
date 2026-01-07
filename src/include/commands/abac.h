@@ -27,9 +27,9 @@ void DelRoleUserAttr(Oid roleid, Oid attrid, const char* value, const char* attr
 extern Oid CreateResourceAttribute(ParseState *pstate, CreateResourceAttributeStmt *stmt);
 extern void DropResourceAttribute(ParseState *pstate, DropResourceAttributeStmt *stmt);
 extern void GrantResourceAttribute(ParseState *pstate, GrantResourceAttributeStmt *stmt);
-void AddRelResourceAttr(Oid relid, Oid attrid, const char* value);
+void AddResourceAttr(Oid resource_id, Oid attrid, const char* value);
 extern void RevokeResourceAttribute(ParseState *pstate, RevokeResourceAttributeStmt *stmt);
-void DelRelResourceAttr(Oid relid, Oid attrid, const char* value, const char* attr_name, const char* relname);
+void DelResourceAttr(Oid resource_id, Oid attrid, const char* value, const char* attr_name);
 
 extern void SetEnvAttribute(ParseState *pstate, SetEnvAttributeStmt *stmt);
 void handle_workday(SetEnvAttributeStmt *stmt);

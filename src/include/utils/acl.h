@@ -240,7 +240,7 @@ extern void RemoveRoleFromObjectACL(Oid roleid, Oid classid, Oid objid);
 extern AclMode pg_class_aclmask(Oid table_oid, Oid roleid,
 								AclMode mask, AclMaskHow how);
 
-extern AclMode pg_class_abac_mask(Oid relid, Oid userid, bool is_workday, bool is_worktime);
+extern AclMode pg_abac_mask(Oid resourceid, Oid userid, bool is_workday, bool is_worktime);
 
 /* generic functions */
 extern AclResult object_aclcheck(Oid classid, Oid objectid,
@@ -261,7 +261,6 @@ extern AclResult pg_attribute_aclcheck_all_ext(Oid table_oid, Oid roleid,
 											   AclMode mode, AclMaskHow how,
 											   bool *is_missing);
 extern AclResult pg_class_aclcheck(Oid table_oid, Oid roleid, AclMode mode);
-extern AclResult pg_class_abac_check(Oid relid, Oid userid, AclMode mode, bool is_workday, bool is_worktime);
 extern AclResult pg_class_aclcheck_ext(Oid table_oid, Oid roleid,
 									   AclMode mode, bool *is_missing);
 extern AclResult pg_parameter_aclcheck(const char *name, Oid roleid,

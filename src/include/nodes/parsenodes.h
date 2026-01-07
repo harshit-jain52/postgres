@@ -3263,6 +3263,7 @@ typedef struct GrantResourceAttributeStmt
 	NodeTag		type;
 	char *attribute;
 	char *value;
+	ObjectType resource_type;
 	List	   *grantees;
 } GrantResourceAttributeStmt;
 
@@ -3271,6 +3272,7 @@ typedef struct RevokeResourceAttributeStmt
 	NodeTag		type;
 	char *attribute;
 	char* value;
+	ObjectType resource_type;
 	List	   *grantees;
 } RevokeResourceAttributeStmt;
 
