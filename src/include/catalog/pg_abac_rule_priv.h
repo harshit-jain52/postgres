@@ -29,6 +29,7 @@ CATALOG(pg_abac_rule_priv,8790,AbacRulePrivRelationId) BKI_SHARED_RELATION BKI_R
 	int32		privileges;		/* bitmask of privileges (AclMode) */
 	bool		is_workday;		/* value of the environment attribute condition */
 	bool		is_worktime;	/* value of the environment attribute condition */
+	NameData	subnet_name;
 } FormData_pg_abac_rule_priv;  
   
 /* ----------------  

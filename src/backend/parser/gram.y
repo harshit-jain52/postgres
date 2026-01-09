@@ -675,9 +675,9 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				json_object_constructor_null_clause_opt
 				json_array_constructor_null_clause_opt
 
-%type <str> 	value_all value_any
-%type <defelt> attribute_pair
-%type <list> attribute_pair_list user_attribute_clause resource_attribute_clause user_attribute_clause_opt resource_attribute_clause_opt attribute_clause
+%type <str> 	value_all value_any subnet_name
+%type <defelt> attribute_pair subnet_kv
+%type <list> attribute_pair_list user_attribute_clause resource_attribute_clause user_attribute_clause_opt resource_attribute_clause_opt attribute_clause env_attr_list subnet_kv_list
 %type <boolean> is_workday_value is_worktime_value
 %type <objtype> relation_type
 /*
@@ -1710,13 +1710,29 @@ relation_type:
  *
  *****************************************************************************/
 SetEnvAttributeStmt:
-			SET ENV_ATTRIBUTE name '=' var_list
+			SET ENV_ATTRIBUTE name '=' env_attr_list
 				{
 					SetEnvAttributeStmt *n = makeNode(SetEnvAttributeStmt);
 					n->attribute = $3;
 					n->values = $5;
 					$$ = (Node *) n;
 				}
+		;
+
+env_attr_list:
+			var_list
+		|	subnet_kv_list
+		;
+
+subnet_kv_list:
+			subnet_kv { $$ = list_make1($1); }
+		|	subnet_kv_list ',' subnet_kv { $$ = lappend($1, $3); }
+		;
+
+subnet_kv:
+   			name '=' Sconst
+                { $$ = makeDefElem($1, (Node *)makeString($3), @1); }
+
 		;
 
 /*****************************************************************************
@@ -1726,13 +1742,14 @@ SetEnvAttributeStmt:
  *****************************************************************************/
 
 CreateAbacRuleStmt:
-			CREATE ABAC_RULE name FOR privileges OF attribute_clause ENV_ATTRIBUTE is_workday_value is_worktime_value {
+			CREATE ABAC_RULE name FOR privileges OF attribute_clause ENV_ATTRIBUTE is_workday_value is_worktime_value subnet_name {
 					CreateAbacRuleStmt *n = makeNode(CreateAbacRuleStmt);
 					n -> rule_name = $3;
 					n -> privileges = $5;
 					n -> attribute_clause = $7;
 					n -> is_workday = $9;
 					n -> is_worktime = $10;
+					n -> subnet_name = $11;
 					$$ = (Node *) n;
 				}
 		;
@@ -1745,6 +1762,10 @@ is_workday_value:
 is_worktime_value:
 			TRUE_P		{ $$ = true; }
 			| FALSE_P	{ $$ = false; }
+		;
+
+subnet_name:
+			value_any
 		;
 
 attribute_clause:

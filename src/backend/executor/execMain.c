@@ -671,7 +671,7 @@ ExecCheckOneRelPerms(RTEPermissionInfo *perminfo)
 	 * satisfied from column-level rather than relation-level permissions.
 	 * First, remove any bits that are satisfied by relation permissions.
 	 */
-	relPerms = pg_class_aclmask(relOid, userid, requiredPerms, ACLMASK_ALL) | pg_abac_mask(relOid, userid, check_workday(), check_worktime());
+	relPerms = pg_class_aclmask(relOid, userid, requiredPerms, ACLMASK_ALL) | pg_abac_mask(relOid, userid);
 	remainingPerms = requiredPerms & ~relPerms;
 	if (remainingPerms != 0)
 	{

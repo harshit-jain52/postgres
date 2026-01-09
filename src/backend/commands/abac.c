@@ -23,6 +23,7 @@
 #include "catalog/pg_user_attr_val.h"
 #include "catalog/pg_resource_attr.h"
 #include "catalog/pg_resource_attr_val.h"
+#include "catalog/pg_abac_env_subnet.h"
 #include "catalog/pg_abac_env_timewindow.h"
 #include "catalog/pg_abac_env_workday.h"
 #include "catalog/pg_abac_rule.h"
@@ -860,6 +861,8 @@ void SetEnvAttribute(ParseState *pstate, SetEnvAttributeStmt *stmt){
 		handle_workday(stmt);
 	else if(strcmp(stmt->attribute, "timewindow") == 0)
 		handle_timewindow(stmt);
+	else if(strcmp(stmt->attribute, "subnet") == 0)
+		handle_subnet(stmt);
 	else
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -1020,6 +1023,99 @@ void handle_timewindow(SetEnvAttributeStmt *stmt){
 	table_close(rel, NoLock);
 }
 
+void
+handle_subnet(SetEnvAttributeStmt *stmt)
+{
+    Relation    rel;
+    TupleDesc   dsc;
+    ListCell   *lc;
+
+    rel = table_open(AbacEnvSubnetRelationId, RowExclusiveLock);
+    dsc = RelationGetDescr(rel);
+
+    foreach(lc, stmt->values)
+    {
+        DefElem    *def;
+        char       *subnet_name;
+        char       *cidr_str;
+        Datum       cidr_datum;
+        HeapTuple   oldtuple;
+        HeapTuple   newtuple;
+        Datum       values[Natts_pg_abac_env_subnet];
+        bool        nulls[Natts_pg_abac_env_subnet];
+        bool        replaces[Natts_pg_abac_env_subnet];
+
+        def = (DefElem *) lfirst(lc);
+        subnet_name = def->defname;
+
+        if (!IsA(def->arg, String))
+            ereport(ERROR,
+                (errcode(ERRCODE_SYNTAX_ERROR),
+                 errmsg("subnet value must be a CIDR string")));
+
+        cidr_str = strVal(def->arg);
+
+        cidr_datum = DirectFunctionCall1(cidr_in,
+                                         CStringGetDatum(cidr_str));
+
+        oldtuple = SearchSysCache1(ABACENVSUBNET,
+                                   CStringGetDatum(subnet_name));
+
+        memset(values, 0, sizeof(values));
+        memset(nulls, false, sizeof(nulls));
+        memset(replaces, false, sizeof(replaces));
+
+        values[Anum_pg_abac_env_subnet_network - 1] = cidr_datum;
+        replaces[Anum_pg_abac_env_subnet_network - 1] = true;
+
+        if (HeapTupleIsValid(oldtuple))
+        {
+            /* UPDATE existing subnet */
+            newtuple = heap_modify_tuple(oldtuple,
+                                         dsc,
+                                         values,
+                                         nulls,
+                                         replaces);
+
+            CatalogTupleUpdate(rel, &oldtuple->t_self, newtuple);
+
+            heap_freetuple(newtuple);
+            ReleaseSysCache(oldtuple);
+        }
+        else
+        {
+            /* INSERT new subnet */
+            values[Anum_pg_abac_env_subnet_subnet_name - 1] =
+                DirectFunctionCall1(namein,
+                                    CStringGetDatum(subnet_name));
+
+            newtuple = heap_form_tuple(dsc, values, nulls);
+            CatalogTupleInsert(rel, newtuple);
+            heap_freetuple(newtuple);
+        }
+    }
+
+    table_close(rel, NoLock);
+}
+
+void
+check_subnet_exists(const char *subnet_name)
+{
+    HeapTuple tuple;
+
+    tuple = SearchSysCache1(ABACENVSUBNET,
+                            CStringGetDatum(subnet_name));
+
+    if (!HeapTupleIsValid(tuple))
+        ereport(ERROR,
+            (errcode(ERRCODE_UNDEFINED_OBJECT),
+             errmsg("environment subnet \"%s\" does not exist",
+                    subnet_name),
+             errhint("Use SET ENV_ATTRIBUTE subnet to define it first.")));
+
+    ReleaseSysCache(tuple);
+}
+
 void AddRuleAttr(Oid ruleid, Oid attrid, bool is_user_attr, const char* value)
 {
 	Relation	pg_abac_rule_rel;
@@ -1107,11 +1203,16 @@ CreateAbacRule(ParseState *pstate, CreateAbacRuleStmt *stmt)
 		}
 	}
 	
+	if(strcmp(stmt->subnet_name, "any") != 0){
+		check_subnet_exists(stmt->subnet_name);
+	}
+
 	new_record[Anum_pg_abac_rule_priv_oid - 1] = ObjectIdGetDatum(rule_id);
 	new_record[Anum_pg_abac_rule_priv_rulename - 1] = DirectFunctionCall1(namein, CStringGetDatum(stmt->rule_name));
 	new_record[Anum_pg_abac_rule_priv_privileges - 1] = Int32GetDatum(privilege_mask);
 	new_record[Anum_pg_abac_rule_priv_is_workday - 1] = BoolGetDatum(stmt->is_workday);
 	new_record[Anum_pg_abac_rule_priv_is_worktime - 1] = BoolGetDatum(stmt->is_worktime);
+	new_record[Anum_pg_abac_rule_priv_subnet_name - 1] = DirectFunctionCall1(namein, CStringGetDatum(stmt->subnet_name));
 
 	tuple = heap_form_tuple(pg_abac_rule_priv_dsc, new_record, new_record_nulls);    
 	CatalogTupleInsert(pg_abac_rule_priv_rel, tuple);

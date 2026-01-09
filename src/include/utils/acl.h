@@ -240,7 +240,7 @@ extern void RemoveRoleFromObjectACL(Oid roleid, Oid classid, Oid objid);
 extern AclMode pg_class_aclmask(Oid table_oid, Oid roleid,
 								AclMode mask, AclMaskHow how);
 
-extern AclMode pg_abac_mask(Oid resourceid, Oid userid, bool is_workday, bool is_worktime);
+extern AclMode pg_abac_mask(Oid resourceid, Oid userid);
 
 /* generic functions */
 extern AclResult object_aclcheck(Oid classid, Oid objectid,
@@ -296,7 +296,9 @@ extern Oid	get_abac_rule_oid(const char *rulename, bool missing_ok);
 extern bool evaluate_abac_rule_conditions(Oid rule_id, Oid userid, Oid relid);
 extern bool check_user_attribute_condition(Oid userid, Oid attr_id, const char *expected_value);
 extern bool check_resource_attribute_condition(Oid relid, Oid attr_id, const char *expected_value);
+extern bool check_abac_env_conditions(bool is_workday, bool is_worktime, const char *subnet_name);
 extern bool check_workday();
 extern bool check_worktime();
+extern bool check_subnet(const char *subnet_name);
 
 #endif							/* ACL_H */

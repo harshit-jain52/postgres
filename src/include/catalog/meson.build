@@ -76,7 +76,8 @@ catalog_headers = [
   'pg_abac_rule.h',
   'pg_abac_rule_priv.h',
   'pg_abac_env_workday.h',
-  'pg_abac_env_timewindow.h'
+  'pg_abac_env_timewindow.h',
+  'pg_abac_env_subnet.h'
 ]
 
 # The .dat files we need can just be listed alphabetically.

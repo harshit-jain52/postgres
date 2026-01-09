@@ -89,7 +89,8 @@ CATALOG_HEADERS := \
 	pg_abac_rule.h \
 	pg_abac_rule_priv.h \
 	pg_abac_env_workday.h \
-	pg_abac_env_timewindow.h
+	pg_abac_env_timewindow.h \
+	pg_abac_env_subnet.h
 
 GENERATED_HEADERS := $(CATALOG_HEADERS:%.h=%_d.h)
 

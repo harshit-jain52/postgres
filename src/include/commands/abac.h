@@ -34,6 +34,7 @@ void DelResourceAttr(Oid resource_id, Oid attrid, const char* value, const char*
 extern void SetEnvAttribute(ParseState *pstate, SetEnvAttributeStmt *stmt);
 void handle_workday(SetEnvAttributeStmt *stmt);
 void handle_timewindow(SetEnvAttributeStmt *stmt);
+void handle_subnet(SetEnvAttributeStmt *stmt);
 
 extern void CreateAbacRule(ParseState *pstate, CreateAbacRuleStmt *stmt);
 void AddRuleAttr(Oid ruleid, Oid attrid, bool is_user_attr, const char* value);

@@ -49,6 +49,7 @@
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
+#include "catalog/pg_abac_env_subnet.h"
 #include "catalog/pg_abac_env_timewindow.h"
 #include "catalog/pg_abac_env_workday.h"
 #include "catalog/pg_abac_rule.h"
@@ -77,6 +78,7 @@
 #include "commands/proclang.h"
 #include "commands/tablespace.h"
 #include "foreign/foreign.h"
+#include "libpq/libpq.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "parser/parse_func.h"
@@ -87,6 +89,7 @@
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
+#include "utils/inet.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
@@ -3270,7 +3273,7 @@ pg_class_aclmask(Oid table_oid, Oid roleid,
  * Routine for evaluating ABAC rules and returning the combined mask
  */
 AclMode
-pg_abac_mask(Oid resourceid, Oid userid, bool is_workday, bool is_worktime)
+pg_abac_mask(Oid resourceid, Oid userid)
 {
 	AclMode	 	currentPerms = ACL_NO_RIGHTS;
 	Relation    pg_abac_rule_priv_rel;
@@ -3283,11 +3286,10 @@ pg_abac_mask(Oid resourceid, Oid userid, bool is_workday, bool is_worktime)
                               true, NULL, 0, NULL);
 	
 	while (HeapTupleIsValid(tuple = systable_getnext(scan)))  
-    {  
-        Form_pg_abac_rule_priv rule_priv = (Form_pg_abac_rule_priv) GETSTRUCT(tuple);  
-		if (is_workday == rule_priv->is_workday
-			&& is_worktime == rule_priv->is_worktime
-			&& evaluate_abac_rule_conditions(rule_priv->oid, userid, resourceid))  
+    {
+        Form_pg_abac_rule_priv rule_priv = (Form_pg_abac_rule_priv) GETSTRUCT(tuple);
+		if (check_abac_env_conditions(rule_priv->is_workday, rule_priv->is_worktime, NameStr(rule_priv->subnet_name))
+			&& evaluate_abac_rule_conditions(rule_priv->oid, userid, resourceid))
 			currentPerms |= rule_priv->privileges;
 		
     }
@@ -3876,7 +3878,7 @@ object_aclcheck_ext(Oid classid, Oid objectid,
 		case OBJECT_SEQUENCE:
 		case OBJECT_FUNCTION:
 			if ((object_aclmask_ext(classid, objectid, roleid, mode, ACLMASK_ANY,
-							is_missing) | (mode & pg_abac_mask(objectid, roleid, check_workday(), check_worktime()))) != 0)
+							is_missing) | (mode & pg_abac_mask(objectid, roleid))) != 0)
 				return ACLCHECK_OK;
 			else
 				return ACLCHECK_NO_PRIV;
@@ -4087,7 +4089,7 @@ pg_class_aclcheck_ext(Oid table_oid, Oid roleid,
 					  AclMode mode, bool *is_missing)
 {
 	if ((pg_class_aclmask_ext(table_oid, roleid, mode,
-							 ACLMASK_ANY, is_missing) | (mode & pg_abac_mask(table_oid, roleid, check_workday(), check_worktime()))) != 0)
+							 ACLMASK_ANY, is_missing) | (mode & pg_abac_mask(table_oid, roleid))) != 0)
 		return ACLCHECK_OK;
 	else
 		return ACLCHECK_NO_PRIV;
@@ -5031,6 +5033,14 @@ RemoveRoleFromInitPriv(Oid roleid, Oid classid, Oid objid, int32 objsubid)
 }
 
 bool
+check_abac_env_conditions(bool is_workday, bool is_worktime, const char *subnet_name)
+{
+	if(is_workday != check_workday()) return false;
+	if(is_worktime != check_worktime()) return false;
+	return check_subnet(subnet_name);
+}
+
+bool
 evaluate_abac_rule_conditions(Oid rule_id, Oid userid, Oid resourceid){
 	Relation    pg_abac_rule_rel;
 	TupleDesc	pg_abac_rule_dsc;
@@ -5229,4 +5239,55 @@ bool check_worktime()
 	ReleaseSysCache(tuple);
 
 	return is_worktime;
+}
+
+bool check_subnet(const char *subnet_name)
+{
+	HeapTuple   tuple;
+	Relation   	pg_abac_env_subnet_rel;
+    Datum       net_datum;
+    inet       *client;
+    bool        isnull;
+    char       *remote_host;
+	bool		allowed;
+
+	if(strcmp(subnet_name, "any") == 0)
+		return true;
+	
+	if (MyProcPort == NULL || MyProcPort->remote_host == NULL)
+        return false;
+
+	remote_host = MyProcPort->remote_host;
+
+	/* For local connections (Unix domain socket) */
+	if (strcmp(remote_host, "[local]") == 0)
+    	return true;
+	
+    client = DatumGetInetP(
+                DirectFunctionCall1(inet_in,
+                    CStringGetDatum(remote_host)));
+
+	tuple = SearchSysCache1(ABACENVSUBNET,
+                            CStringGetDatum(subnet_name));
+    if (!HeapTupleIsValid(tuple))
+    {
+        /* Should never happen because validated at CREATE ABAC_RULE */
+        ereport(ERROR,
+            (errmsg("environment subnet \"%s\" does not exist",
+                    subnet_name)));
+    }
+
+	pg_abac_env_subnet_rel = table_open(AbacEnvSubnetRelationId, AccessShareLock);
+	net_datum = heap_getattr(tuple,
+                             Anum_pg_abac_env_subnet_network,
+                             RelationGetDescr(pg_abac_env_subnet_rel),
+                             &isnull);
+
+    allowed = DatumGetBool(DirectFunctionCall2(network_supeq,
+								net_datum,
+								InetPGetDatum(client)));
+	
+    ReleaseSysCache(tuple);
+	table_close(pg_abac_env_subnet_rel, NoLock);
+    return allowed;
 }
