@@ -1175,6 +1175,9 @@ CreateAbacRule(ParseState *pstate, CreateAbacRuleStmt *stmt)
 	ListCell   *priv;
 	AccessPriv *access_priv;
 	Oid			currentUserId = GetUserId();
+	float8		server_load = 0.0;
+	Float	   *float_node;
+	char	   *endptr;
 
 	/* Only superusers can create ABAC rules */
 	if (!superuser_arg(currentUserId))
@@ -1207,12 +1210,32 @@ CreateAbacRule(ParseState *pstate, CreateAbacRuleStmt *stmt)
 		check_subnet_exists(stmt->subnet_name);
 	}
 
+	if(stmt->server_load != NULL){
+		if (!IsA(stmt->server_load, Float))  
+        	elog(ERROR, "server_load is not a Float node");
+
+		float_node = castNode(Float, stmt->server_load);
+		server_load = strtod(float_node->fval, &endptr);
+
+		if (endptr == float_node->fval || *endptr != '\0')
+			ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("invalid server_load value \"%s\"", float_node->fval)));
+		
+		if(server_load < 0.0 || server_load > 1.0)
+			ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					errmsg("invalid server_load value %.2f, must be between 0.0 and 1.0", server_load)));
+		
+	}
+
 	new_record[Anum_pg_abac_rule_priv_oid - 1] = ObjectIdGetDatum(rule_id);
 	new_record[Anum_pg_abac_rule_priv_rulename - 1] = DirectFunctionCall1(namein, CStringGetDatum(stmt->rule_name));
 	new_record[Anum_pg_abac_rule_priv_privileges - 1] = Int32GetDatum(privilege_mask);
 	new_record[Anum_pg_abac_rule_priv_is_workday - 1] = BoolGetDatum(stmt->is_workday);
 	new_record[Anum_pg_abac_rule_priv_is_worktime - 1] = BoolGetDatum(stmt->is_worktime);
 	new_record[Anum_pg_abac_rule_priv_subnet_name - 1] = DirectFunctionCall1(namein, CStringGetDatum(stmt->subnet_name));
+	new_record[Anum_pg_abac_rule_priv_server_load - 1] = Float8GetDatum(server_load);
 
 	tuple = heap_form_tuple(pg_abac_rule_priv_dsc, new_record, new_record_nulls);    
 	CatalogTupleInsert(pg_abac_rule_priv_rel, tuple);

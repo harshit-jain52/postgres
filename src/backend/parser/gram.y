@@ -1742,7 +1742,7 @@ subnet_kv:
  *****************************************************************************/
 
 CreateAbacRuleStmt:
-			CREATE ABAC_RULE name FOR privileges OF attribute_clause ENV_ATTRIBUTE is_workday_value is_worktime_value subnet_name {
+			CREATE ABAC_RULE name FOR privileges OF attribute_clause ENV_ATTRIBUTE is_workday_value is_worktime_value subnet_name FCONST {
 					CreateAbacRuleStmt *n = makeNode(CreateAbacRuleStmt);
 					n -> rule_name = $3;
 					n -> privileges = $5;
@@ -1750,6 +1750,7 @@ CreateAbacRuleStmt:
 					n -> is_workday = $9;
 					n -> is_worktime = $10;
 					n -> subnet_name = $11;
+					n -> server_load = (Node *) makeFloat($12);
 					$$ = (Node *) n;
 				}
 		;

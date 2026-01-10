@@ -37,6 +37,7 @@
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
+#include "pgstat.h"
 
 #include "access/genam.h"
 #include "access/heapam.h"
@@ -86,6 +87,7 @@
 #include "storage/lmgr.h"
 #include "utils/acl.h"
 #include "utils/aclchk_internal.h"
+#include "utils/backend_status.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
@@ -3288,7 +3290,7 @@ pg_abac_mask(Oid resourceid, Oid userid)
 	while (HeapTupleIsValid(tuple = systable_getnext(scan)))  
     {
         Form_pg_abac_rule_priv rule_priv = (Form_pg_abac_rule_priv) GETSTRUCT(tuple);
-		if (check_abac_env_conditions(rule_priv->is_workday, rule_priv->is_worktime, NameStr(rule_priv->subnet_name))
+		if (check_abac_env_conditions(rule_priv->is_workday, rule_priv->is_worktime, NameStr(rule_priv->subnet_name), rule_priv->server_load)
 			&& evaluate_abac_rule_conditions(rule_priv->oid, userid, resourceid))
 			currentPerms |= rule_priv->privileges;
 		
@@ -5033,10 +5035,11 @@ RemoveRoleFromInitPriv(Oid roleid, Oid classid, Oid objid, int32 objsubid)
 }
 
 bool
-check_abac_env_conditions(bool is_workday, bool is_worktime, const char *subnet_name)
+check_abac_env_conditions(bool is_workday, bool is_worktime, const char *subnet_name, float8 allowed_server_load)
 {
 	if(is_workday != check_workday()) return false;
 	if(is_worktime != check_worktime()) return false;
+	if(allowed_server_load < get_connection_load_ratio()) return false;
 	return check_subnet(subnet_name);
 }
 
@@ -5290,4 +5293,32 @@ bool check_subnet(const char *subnet_name)
     ReleaseSysCache(tuple);
 	table_close(pg_abac_env_subnet_rel, NoLock);
     return allowed;
+}
+
+float get_connection_load_ratio()
+{  
+    int		active_connections = 0;  
+    int		max_connections;  
+    int		num_backends;  
+    int		curr_backend; 
+ 
+    max_connections = MaxConnections;
+    num_backends = pgstat_fetch_stat_numbackends();
+
+    for (curr_backend = 1; curr_backend <= num_backends; curr_backend++)
+    {
+        LocalPgBackendStatus *local_beentry;
+        PgBackendStatus *beentry;  
+          
+        local_beentry = pgstat_get_local_beentry_by_index(curr_backend);  
+        beentry = &local_beentry->backendStatus;  
+          
+        if (beentry->st_state == STATE_RUNNING)  
+            active_connections++;  
+    }  
+      
+    if (max_connections > 0)  
+        return (float) active_connections / (float) max_connections;  
+    else  
+        return 0.0;
 }

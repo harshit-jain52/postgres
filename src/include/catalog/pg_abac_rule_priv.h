@@ -30,6 +30,7 @@ CATALOG(pg_abac_rule_priv,8790,AbacRulePrivRelationId) BKI_SHARED_RELATION BKI_R
 	bool		is_workday;		/* value of the environment attribute condition */
 	bool		is_worktime;	/* value of the environment attribute condition */
 	NameData	subnet_name;
+	float8		server_load;
 } FormData_pg_abac_rule_priv;  
   
 /* ----------------  

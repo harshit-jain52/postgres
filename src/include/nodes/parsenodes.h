@@ -3302,6 +3302,7 @@ typedef struct CreateAbacRuleStmt
 	bool		is_workday;
 	bool		is_worktime;
 	char	   *subnet_name;
+	Node	   *server_load;
 } CreateAbacRuleStmt;
 
 typedef struct DropAbacRuleStmt
