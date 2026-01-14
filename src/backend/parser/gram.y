@@ -675,7 +675,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				json_object_constructor_null_clause_opt
 				json_array_constructor_null_clause_opt
 
-%type <str> 	value_all value_any subnet_name
+%type <str> 	value_all subnet_name
 %type <defelt> attribute_pair subnet_kv
 %type <list> attribute_pair_list user_attribute_clause resource_attribute_clause user_attribute_clause_opt resource_attribute_clause_opt attribute_clause env_attr_list subnet_kv_list
 %type <boolean> is_workday_value is_worktime_value
@@ -1766,7 +1766,7 @@ is_worktime_value:
 		;
 
 subnet_name:
-			value_any
+			NonReservedWord
 		;
 
 attribute_clause:
@@ -1810,14 +1810,9 @@ attribute_pair_list:
         ;
 
 attribute_pair:
-            NonReservedWord '=' value_any
+            NonReservedWord '=' NonReservedWord
                 { $$ = makeDefElem($1, (Node *)makeString($3), @1); }
         ;
-
-value_any:
-		NonReservedWord
-		| ANY 		{ $$ = pstrdup($1); }
-		;
 
 /*****************************************************************************
  *

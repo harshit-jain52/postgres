@@ -1206,9 +1206,7 @@ CreateAbacRule(ParseState *pstate, CreateAbacRuleStmt *stmt)
 		}
 	}
 	
-	if(strcmp(stmt->subnet_name, "any") != 0){
-		check_subnet_exists(stmt->subnet_name);
-	}
+	check_subnet_exists(stmt->subnet_name);
 
 	if(stmt->server_load != NULL){
 		if (!IsA(stmt->server_load, Float))  

@@ -5132,7 +5132,7 @@ bool check_user_attribute_condition(Oid userid, Oid attr_id, const char *expecte
             value_text = DatumGetTextP(value_datum);  
             value_cstr = text_to_cstring(value_text);  
               
-            if (strcmp(expected_value, "any") == 0 || strcmp(value_cstr, expected_value) == 0)
+            if (strcmp(value_cstr, expected_value) == 0)
                 condition_met = true;
 
             pfree(value_cstr);  
@@ -5254,9 +5254,6 @@ bool check_subnet(const char *subnet_name)
     char       *remote_host;
 	bool		allowed;
 
-	if(strcmp(subnet_name, "any") == 0)
-		return true;
-	
 	if (MyProcPort == NULL || MyProcPort->remote_host == NULL)
         return false;
 
