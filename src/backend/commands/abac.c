@@ -1159,6 +1159,37 @@ string_to_privilege(const char *privname){
 	return 0;
 }
 
+void  
+check_unique_attributes(List *attrs, const char *attr_type)
+{
+    ListCell   *lc;
+    List       *seen_names = NIL;
+
+    if (attrs == NIL)
+        return;
+
+    foreach(lc, attrs)
+    {
+        DefElem    *def = (DefElem *) lfirst(lc);
+        char       *attr_name = def->defname;
+        ListCell   *lc2;
+        
+        foreach(lc2, seen_names)
+        {  
+            char *seen_name = (char *) lfirst(lc2);
+            if (strcmp(attr_name, seen_name) == 0)
+            {
+                ereport(ERROR,
+                        (errcode(ERRCODE_DUPLICATE_OBJECT),
+                         errmsg("duplicate %s attribute \"%s\"", attr_type, attr_name)));
+            }
+        }
+        seen_names = lappend(seen_names, pstrdup(attr_name));
+    }
+
+    list_free_deep(seen_names);
+}
+
 void
 CreateAbacRule(ParseState *pstate, CreateAbacRuleStmt *stmt)  
 {  
@@ -1167,6 +1198,7 @@ CreateAbacRule(ParseState *pstate, CreateAbacRuleStmt *stmt)
 	HeapTuple	tuple;  
 	Datum		new_record[Natts_pg_abac_rule_priv] = {0};
 	bool		new_record_nulls[Natts_pg_abac_rule_priv] = {0};
+	List	   *env_attrs;    
 	List	   *user_attrs;    
 	List	   *resource_attrs;    
 	ListCell   *lc;
@@ -1175,9 +1207,6 @@ CreateAbacRule(ParseState *pstate, CreateAbacRuleStmt *stmt)
 	ListCell   *priv;
 	AccessPriv *access_priv;
 	Oid			currentUserId = GetUserId();
-	float8		server_load = 0.0;
-	Float	   *float_node;
-	char	   *endptr;
 
 	/* Only superusers can create ABAC rules */
 	if (!superuser_arg(currentUserId))
@@ -1205,42 +1234,90 @@ CreateAbacRule(ParseState *pstate, CreateAbacRuleStmt *stmt)
 			privilege_mask |= string_to_privilege(access_priv->priv_name);
 		}
 	}
-	
-	check_subnet_exists(stmt->subnet_name);
 
-	if(stmt->server_load != NULL){
-		if (!IsA(stmt->server_load, Float))  
-        	elog(ERROR, "server_load is not a Float node");
+	env_attrs = stmt->env_attribute_clause;
+	check_unique_attributes(env_attrs, "environment");
+	new_record_nulls[Anum_pg_abac_rule_priv_is_workday - 1] = true;
+	new_record_nulls[Anum_pg_abac_rule_priv_is_worktime - 1] = true;
+	new_record_nulls[Anum_pg_abac_rule_priv_subnet_name - 1] = true;
+	new_record_nulls[Anum_pg_abac_rule_priv_server_load - 1] = true;
 
-		float_node = castNode(Float, stmt->server_load);
-		server_load = strtod(float_node->fval, &endptr);
+	foreach(lc, env_attrs)
+	{
+		DefElem    *def = (DefElem *) lfirst(lc);
+		char	   *attr_name = def->defname;
+		char	   *attr_value = strVal(def->arg);
 
-		if (endptr == float_node->fval || *endptr != '\0')
+		if(strcmp(attr_name, "workday") == 0){
+			bool is_workday;
+			if (strcmp(attr_value, "true") == 0)
+				is_workday = true;
+			else if (strcmp(attr_value, "false") == 0)
+				is_workday = false;
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("invalid workday value \"%s\", must be true or false", attr_value)));
+			new_record[Anum_pg_abac_rule_priv_is_workday - 1] = BoolGetDatum(is_workday);
+			new_record_nulls[Anum_pg_abac_rule_priv_is_workday - 1] = false;
+		}
+		else if(strcmp(attr_name, "worktime") == 0){
+			bool is_worktime;
+			if (strcmp(attr_value, "true") == 0)
+				is_worktime = true;
+			else if (strcmp(attr_value, "false") == 0)
+				is_worktime = false;
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("invalid worktime value \"%s\", must be true or false", attr_value)));
+			new_record[Anum_pg_abac_rule_priv_is_worktime - 1] = BoolGetDatum(is_worktime);
+			new_record_nulls[Anum_pg_abac_rule_priv_is_worktime - 1] = false;
+		}
+		else if(strcmp(attr_name, "subnet") == 0){
+			check_subnet_exists(attr_value);
+			new_record[Anum_pg_abac_rule_priv_subnet_name - 1] = DirectFunctionCall1(namein, CStringGetDatum(attr_value));
+			new_record_nulls[Anum_pg_abac_rule_priv_subnet_name - 1] = false;
+		}
+		else if(strcmp(attr_name, "server_load") == 0){
+			float8 server_load = 0.0;
+			char *endptr;
+
+			server_load = strtod(attr_value, &endptr);
+			if (endptr == attr_value || *endptr != '\0')
+				ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("invalid server_load value \"%s\"", attr_value)));
+
+			if (server_load < 0.0 || server_load > 1.0)
+				ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("invalid server_load value %.2f, must be between 0.0 and 1.0", server_load)));
+
+			new_record[Anum_pg_abac_rule_priv_server_load - 1] = Float8GetDatum(server_load);
+			new_record_nulls[Anum_pg_abac_rule_priv_server_load - 1] = false;
+		}
+		else{
 			ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("invalid server_load value \"%s\"", float_node->fval)));
-		
-		if(server_load < 0.0 || server_load > 1.0)
-			ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					errmsg("invalid server_load value %.2f, must be between 0.0 and 1.0", server_load)));
-		
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("unrecognized environment attribute \"%s\"", attr_name)));
+		}
 	}
 
 	new_record[Anum_pg_abac_rule_priv_oid - 1] = ObjectIdGetDatum(rule_id);
 	new_record[Anum_pg_abac_rule_priv_rulename - 1] = DirectFunctionCall1(namein, CStringGetDatum(stmt->rule_name));
 	new_record[Anum_pg_abac_rule_priv_privileges - 1] = Int32GetDatum(privilege_mask);
-	new_record[Anum_pg_abac_rule_priv_is_workday - 1] = BoolGetDatum(stmt->is_workday);
-	new_record[Anum_pg_abac_rule_priv_is_worktime - 1] = BoolGetDatum(stmt->is_worktime);
-	new_record[Anum_pg_abac_rule_priv_subnet_name - 1] = DirectFunctionCall1(namein, CStringGetDatum(stmt->subnet_name));
-	new_record[Anum_pg_abac_rule_priv_server_load - 1] = Float8GetDatum(server_load);
 
 	tuple = heap_form_tuple(pg_abac_rule_priv_dsc, new_record, new_record_nulls);    
 	CatalogTupleInsert(pg_abac_rule_priv_rel, tuple);
 	heap_freetuple(tuple);  
 	
-	/* Process user attributes */
 	user_attrs = (List *) linitial(stmt->attribute_clause);
+	resource_attrs = (List *) lsecond(stmt->attribute_clause);    
+	check_unique_attributes(user_attrs, "user");
+	check_unique_attributes(resource_attrs, "resource");
+
+	/* Process user attributes */
 	if (user_attrs != NIL)  {  
 		foreach(lc, user_attrs)  {  
 			DefElem    *def = (DefElem *) lfirst(lc);  
@@ -1254,7 +1331,6 @@ CreateAbacRule(ParseState *pstate, CreateAbacRuleStmt *stmt)
 	}
 	
 	/* Process resource attributes */
-	resource_attrs = (List *) lsecond(stmt->attribute_clause);    
 	if (resource_attrs != NIL)  {
 		foreach(lc, resource_attrs)  {
 			DefElem    *def = (DefElem *) lfirst(lc);

@@ -3299,10 +3299,7 @@ typedef struct CreateAbacRuleStmt
 	char	   *rule_name;		
 	List	   *privileges;		
 	List	   *attribute_clause;
-	bool		is_workday;
-	bool		is_worktime;
-	char	   *subnet_name;
-	Node	   *server_load;
+	List	   *env_attribute_clause;
 } CreateAbacRuleStmt;
 
 typedef struct DropAbacRuleStmt

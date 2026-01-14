@@ -675,11 +675,11 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				json_object_constructor_null_clause_opt
 				json_array_constructor_null_clause_opt
 
-%type <str> 	value_all subnet_name
+%type <str> 	value_all
 %type <defelt> attribute_pair subnet_kv
-%type <list> attribute_pair_list user_attribute_clause resource_attribute_clause user_attribute_clause_opt resource_attribute_clause_opt attribute_clause env_attr_list subnet_kv_list
-%type <boolean> is_workday_value is_worktime_value
+%type <list> attribute_pair_list user_attribute_clause resource_attribute_clause user_attribute_clause_opt resource_attribute_clause_opt attribute_clause env_attribute_clause env_attr_list subnet_kv_list
 %type <objtype> relation_type
+%type <node> attribute_value
 /*
  * Non-keyword token types.  These are hard-wired into the "flex" lexer.
  * They must be listed first so that their numeric codes do not depend on
@@ -1630,31 +1630,31 @@ DropResourceAttributeStmt:
  *****************************************************************************/
 
 GrantUserAttributeStmt:
-			GRANT USER_ATTRIBUTE '{' name '=' NonReservedWord '}' TO role_list
+			GRANT USER_ATTRIBUTE '{' name '=' attribute_value '}' TO role_list
 				{
 					GrantUserAttributeStmt *n = makeNode(GrantUserAttributeStmt);
 					n->attribute = $4;
-					n->value = $6;
+					n->value = pstrdup(strVal($6));;
 					n->grantees = $9;
 					$$ = (Node *) n;
 				}
 		;		
 
 GrantResourceAttributeStmt:
-			GRANT RESOURCE_ATTRIBUTE '{' name '=' NonReservedWord '}' TO relation_type qualified_name_list
+			GRANT RESOURCE_ATTRIBUTE '{' name '=' attribute_value '}' TO relation_type qualified_name_list
 				{
 					GrantResourceAttributeStmt *n = makeNode(GrantResourceAttributeStmt);
 					n->attribute = $4;
-					n->value = $6;
+					n->value = pstrdup(strVal($6));;
 					n->resource_type = $9;
 					n->grantees = $10;
 					$$ = (Node *) n;
 				}
-		|	GRANT RESOURCE_ATTRIBUTE '{' name '=' NonReservedWord '}' TO FUNCTION function_with_argtypes_list
+		|	GRANT RESOURCE_ATTRIBUTE '{' name '=' attribute_value '}' TO FUNCTION function_with_argtypes_list
 				{
 					GrantResourceAttributeStmt *n = makeNode(GrantResourceAttributeStmt);
 					n->attribute = $4;
-					n->value = $6;
+					n->value = pstrdup(strVal($6));
 					n->resource_type = OBJECT_FUNCTION;
 					n->grantees = $10;
 					$$ = (Node *) n;
@@ -1694,7 +1694,7 @@ RevokeResourceAttributeStmt:
 		;
 
 value_all:
-		NonReservedWord
+		attribute_value {$$ = pstrdup(strVal($1));}
 		| ALL 			{ $$ = pstrdup($1); }
 		;
 
@@ -1742,31 +1742,14 @@ subnet_kv:
  *****************************************************************************/
 
 CreateAbacRuleStmt:
-			CREATE ABAC_RULE name FOR privileges OF attribute_clause ENV_ATTRIBUTE is_workday_value is_worktime_value subnet_name FCONST {
+			CREATE ABAC_RULE name FOR privileges OF attribute_clause env_attribute_clause {
 					CreateAbacRuleStmt *n = makeNode(CreateAbacRuleStmt);
 					n -> rule_name = $3;
 					n -> privileges = $5;
 					n -> attribute_clause = $7;
-					n -> is_workday = $9;
-					n -> is_worktime = $10;
-					n -> subnet_name = $11;
-					n -> server_load = (Node *) makeFloat($12);
+					n -> env_attribute_clause = $8;
 					$$ = (Node *) n;
 				}
-		;
-
-is_workday_value:
-			TRUE_P		{ $$ = true; }
-			| FALSE_P	{ $$ = false; }
-		;
-
-is_worktime_value:
-			TRUE_P		{ $$ = true; }
-			| FALSE_P	{ $$ = false; }
-		;
-
-subnet_name:
-			NonReservedWord
 		;
 
 attribute_clause:
@@ -1802,6 +1785,11 @@ resource_attribute_clause_opt:
                 { $$ = NIL; }
         ;
 
+env_attribute_clause:
+            ENV_ATTRIBUTE '(' attribute_pair_list ')'
+                { $$ = $3; }
+        ;
+
 attribute_pair_list:
             attribute_pair
                 { $$ = list_make1($1); }
@@ -1810,9 +1798,25 @@ attribute_pair_list:
         ;
 
 attribute_pair:
-            NonReservedWord '=' NonReservedWord
-                { $$ = makeDefElem($1, (Node *)makeString($3), @1); }
+            name '=' attribute_value
+                { $$ = makeDefElem($1, $3, @1); }
         ;
+
+attribute_value:
+      		NonReservedWord
+        		{ $$ = (Node *)makeString($1); }
+    		| Iconst
+        		{ $$ = (Node *)makeString(psprintf("%d", $1)); }
+    		| FCONST
+				{ $$ = (Node *)makeString($1); }
+    		| Sconst
+				{ $$ = (Node *)makeString($1); }
+			| TRUE_P
+				{ $$ = (Node *)makeString("true"); }
+			| FALSE_P
+				{ $$ = (Node *)makeString("false"); }
+;
+
 
 /*****************************************************************************
  *

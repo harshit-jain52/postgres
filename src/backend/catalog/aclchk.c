@@ -3290,7 +3290,43 @@ pg_abac_mask(Oid resourceid, Oid userid)
 	while (HeapTupleIsValid(tuple = systable_getnext(scan)))  
     {
         Form_pg_abac_rule_priv rule_priv = (Form_pg_abac_rule_priv) GETSTRUCT(tuple);
-		if (check_abac_env_conditions(rule_priv->is_workday, rule_priv->is_worktime, NameStr(rule_priv->subnet_name), rule_priv->server_load)
+		Datum server_load_datum, is_workday_datum, is_worktime_datum, subnet_name_datum;
+		bool server_load_null, is_workday_null, is_worktime_null, subnet_name_null;
+		float8 server_load_value;
+		bool is_workday_value, is_worktime_value;
+		char *subnet_name_value;
+
+		is_workday_datum = heap_getattr(tuple,
+						Anum_pg_abac_rule_priv_is_workday,
+						RelationGetDescr(pg_abac_rule_priv_rel),
+						&is_workday_null);
+		is_worktime_datum = heap_getattr(tuple,
+						Anum_pg_abac_rule_priv_is_worktime,
+						RelationGetDescr(pg_abac_rule_priv_rel),
+						&is_worktime_null);
+		subnet_name_datum = heap_getattr(tuple,
+						Anum_pg_abac_rule_priv_subnet_name,
+						RelationGetDescr(pg_abac_rule_priv_rel),
+						&subnet_name_null);
+		server_load_datum = heap_getattr(tuple,
+						Anum_pg_abac_rule_priv_server_load,
+						RelationGetDescr(pg_abac_rule_priv_rel),
+						&server_load_null);
+
+		if (!is_workday_null)
+			is_workday_value = DatumGetBool(is_workday_datum);
+		if (!is_worktime_null)
+			is_worktime_value = DatumGetBool(is_worktime_datum);
+		if (!subnet_name_null)
+			subnet_name_value = DatumGetCString(subnet_name_datum);
+		if (!server_load_null)
+			server_load_value = DatumGetFloat8(server_load_datum);
+
+		if (check_abac_env_conditions(
+			is_workday_value, is_workday_null,
+			is_worktime_value, is_worktime_null,
+			subnet_name_value, subnet_name_null,
+			server_load_value, server_load_null)
 			&& evaluate_abac_rule_conditions(rule_priv->oid, userid, resourceid))
 			currentPerms |= rule_priv->privileges;
 		
@@ -5034,13 +5070,16 @@ RemoveRoleFromInitPriv(Oid roleid, Oid classid, Oid objid, int32 objsubid)
 	table_close(rel, RowExclusiveLock);
 }
 
-bool
-check_abac_env_conditions(bool is_workday, bool is_worktime, const char *subnet_name, float8 allowed_server_load)
+bool  
+check_abac_env_conditions(bool is_workday, bool is_workday_null,
+                          bool is_worktime, bool is_worktime_null,
+                          const char *subnet_name, bool subnet_name_null,
+                          float8 allowed_server_load, bool server_load_null)
 {
-	if(is_workday != check_workday()) return false;
-	if(is_worktime != check_worktime()) return false;
-	if(allowed_server_load < get_connection_load_ratio()) return false;
-	return check_subnet(subnet_name);
+	if(!is_workday_null && is_workday != check_workday()) return false;
+	if(!is_worktime_null && is_worktime != check_worktime()) return false;
+	if(!server_load_null && (allowed_server_load < get_connection_load_ratio())) return false;
+	return subnet_name_null || check_subnet(subnet_name);
 }
 
 bool

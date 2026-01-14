@@ -293,13 +293,16 @@ extern bool has_bypassrls_privilege(Oid roleid);
 extern Oid	get_user_attr_oid(const char *attrname, bool missing_ok);
 extern Oid	get_resource_attr_oid(const char *attrname, bool missing_ok);
 extern Oid	get_abac_rule_oid(const char *rulename, bool missing_ok);
-extern bool evaluate_abac_rule_conditions(Oid rule_id, Oid userid, Oid relid);
+extern bool evaluate_abac_rule_conditions(Oid rule_id, Oid userid, Oid resourceid);
 extern bool check_user_attribute_condition(Oid userid, Oid attr_id, const char *expected_value);
 extern bool check_resource_attribute_condition(Oid relid, Oid attr_id, const char *expected_value);
-extern bool check_abac_env_conditions(bool is_workday, bool is_worktime, const char *subnet_name, float8 allowed_server_load);
-extern bool check_workday();
-extern bool check_worktime();
+extern bool check_abac_env_conditions(bool is_workday, bool is_workday_null,
+                          bool is_worktime, bool is_worktime_null,
+                          const char *subnet_name, bool subnet_name_null,
+                          float8 allowed_server_load, bool server_load_null);
+extern bool check_workday(void);
+extern bool check_worktime(void);
 extern bool check_subnet(const char *subnet_name);
-float get_connection_load_ratio();
+float get_connection_load_ratio(void);
 
 #endif							/* ACL_H */
