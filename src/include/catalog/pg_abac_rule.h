@@ -27,8 +27,7 @@ CATALOG(pg_abac_rule,8780,AbacRuleRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OI
 	Oid			rule_id BKI_LOOKUP(pg_abac_rule_priv);	/* FK to pg_abac_rule_priv */  
 	Oid			attr_id;		/* either pg_user_attr.oid or pg_resource_attr.oid */  
 	bool		is_user_attr;	/* true if attr_id references pg_user_attr, false if pg_resource_attr */  
-  
-	/* remaining fields may be null; use heap_getattr to read them! */  
+	bool		is_null;		/* if true, value should be NULL; if false, value should not be NULL */  
 #ifdef CATALOG_VARLEN			/* variable-length fields start here */  
 	text		value;			/* attribute value for the rule */  
 #endif  

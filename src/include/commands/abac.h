@@ -35,9 +35,11 @@ extern void SetEnvAttribute(ParseState *pstate, SetEnvAttributeStmt *stmt);
 void handle_workday(SetEnvAttributeStmt *stmt);
 void handle_timewindow(SetEnvAttributeStmt *stmt);
 void handle_subnet(SetEnvAttributeStmt *stmt);
+void check_subnet_exists(const char *subnet_name);
+void check_unique_attributes(List *attrs, const char *attr_type);
 
 extern void CreateAbacRule(ParseState *pstate, CreateAbacRuleStmt *stmt);
-void AddRuleAttr(Oid ruleid, Oid attrid, bool is_user_attr, const char* value);
+void AddRuleAttr(Oid ruleid, Oid attrid, bool is_user_attr, const char* value, bool is_null);
 extern void DropAbacRule(ParseState *pstate, DropAbacRuleStmt *stmt);
 
 AclMode string_to_privilege(const char *privname);

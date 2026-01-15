@@ -5093,7 +5093,7 @@ evaluate_abac_rule_conditions(Oid rule_id, Oid userid, Oid resourceid){
 	Datum		value_datum;
 	text		*value_text;
 	char	   	*value_cstr;
-	bool		isnull;
+	bool		is_value_null;
 	
 	pg_abac_rule_rel = table_open(AbacRuleRelationId, AccessShareLock);
 	pg_abac_rule_dsc = RelationGetDescr(pg_abac_rule_rel);
@@ -5109,8 +5109,8 @@ evaluate_abac_rule_conditions(Oid rule_id, Oid userid, Oid resourceid){
 	while (HeapTupleIsValid(tuple = systable_getnext(scan)))  
     {  
         Form_pg_abac_rule rule = (Form_pg_abac_rule) GETSTRUCT(tuple);
-		value_datum = heap_getattr(tuple, Anum_pg_abac_rule_value, pg_abac_rule_dsc, &isnull);
-		if(!isnull){
+		value_datum = heap_getattr(tuple, Anum_pg_abac_rule_value, pg_abac_rule_dsc, &is_value_null);
+		if(!is_value_null){
 			value_text = DatumGetTextP(value_datum);
 			value_cstr = text_to_cstring(value_text);
 			if (rule->is_user_attr) {
@@ -5127,6 +5127,20 @@ evaluate_abac_rule_conditions(Oid rule_id, Oid userid, Oid resourceid){
 					break;  
 				}  
 			}  
+		}
+		else{
+			if(rule->is_user_attr){
+				if(check_user_attribute_existence(userid, rule->attr_id) != !rule->is_null){
+					all_conditions_met = false;
+					break;
+				}
+			}
+			else{
+				if(check_resource_attribute_existence(resourceid, rule->attr_id) != !rule->is_null){
+					all_conditions_met = false;
+					break;
+				}
+			}
 		}
     } 
 
@@ -5230,6 +5244,68 @@ bool check_resource_attribute_condition(Oid resource_id, Oid attr_id, const char
 	table_close(pg_res_attr_val_rel, AccessShareLock);
 
 	return condition_met;
+}
+
+bool check_user_attribute_existence(Oid userid, Oid attr_id)
+{
+    Relation    pg_user_attr_val_rel;
+    ScanKeyData skey[2];
+    SysScanDesc scan;
+    HeapTuple   tuple;
+    bool        exists;
+
+    pg_user_attr_val_rel = table_open(UserAttrValRelationId, AccessShareLock);
+
+    ScanKeyInit(&skey[0],
+                Anum_pg_user_attr_val_user_id,
+                BTEqualStrategyNumber, F_OIDEQ,
+                ObjectIdGetDatum(userid));
+    ScanKeyInit(&skey[1],
+                Anum_pg_user_attr_val_attr_id,
+                BTEqualStrategyNumber, F_OIDEQ,
+                ObjectIdGetDatum(attr_id));
+
+    scan = systable_beginscan(pg_user_attr_val_rel,
+                              UserAttrValPkeyIndexId,
+                              true, NULL, 2, skey);
+
+    exists = HeapTupleIsValid(systable_getnext(scan));
+
+    systable_endscan(scan);
+    table_close(pg_user_attr_val_rel, AccessShareLock);
+
+    return exists;
+}
+
+bool check_resource_attribute_existence(Oid resourceid, Oid attr_id)
+{
+    Relation    pg_res_attr_val_rel;
+    ScanKeyData skey[2];
+    SysScanDesc scan;
+    HeapTuple   tuple;
+    bool        exists;
+
+    pg_res_attr_val_rel = table_open(ResourceAttrValRelationId, AccessShareLock);
+
+    ScanKeyInit(&skey[0],
+                Anum_pg_resource_attr_val_resource_id,
+                BTEqualStrategyNumber, F_OIDEQ,
+                ObjectIdGetDatum(resourceid));
+    ScanKeyInit(&skey[1],
+                Anum_pg_resource_attr_val_attr_id,
+                BTEqualStrategyNumber, F_OIDEQ,
+                ObjectIdGetDatum(attr_id));
+
+    scan = systable_beginscan(pg_res_attr_val_rel,
+                              ResourceAttrValPkeyIndexId,
+                              true, NULL, 2, skey);
+
+    exists = HeapTupleIsValid(systable_getnext(scan));
+
+    systable_endscan(scan);
+    table_close(pg_res_attr_val_rel, AccessShareLock);
+
+    return exists;
 }
 
 bool check_workday()

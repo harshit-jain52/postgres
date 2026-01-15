@@ -296,6 +296,8 @@ extern Oid	get_abac_rule_oid(const char *rulename, bool missing_ok);
 extern bool evaluate_abac_rule_conditions(Oid rule_id, Oid userid, Oid resourceid);
 extern bool check_user_attribute_condition(Oid userid, Oid attr_id, const char *expected_value);
 extern bool check_resource_attribute_condition(Oid relid, Oid attr_id, const char *expected_value);
+bool check_user_attribute_existence(Oid userid, Oid attr_id);
+bool check_resource_attribute_existence(Oid resourceid, Oid attr_id);
 extern bool check_abac_env_conditions(bool is_workday, bool is_workday_null,
                           bool is_worktime, bool is_worktime_null,
                           const char *subnet_name, bool subnet_name_null,

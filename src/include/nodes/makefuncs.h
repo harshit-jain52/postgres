@@ -105,7 +105,7 @@ extern Node *makeStringConst(char *str, int location);
 extern DefElem *makeDefElem(char *name, Node *arg, int location);
 extern DefElem *makeDefElemExtended(char *nameSpace, char *name, Node *arg,
 									DefElemAction defaction, int location);
-
+extern AttributeTriplet *makeAttributeTriplet(char *attr_name, Node *value, bool is_null);
 extern GroupingSet *makeGroupingSet(GroupingSetKind kind, List *content, int location);
 
 extern VacuumRelation *makeVacuumRelation(RangeVar *relation, Oid oid, List *va_cols);

@@ -1116,7 +1116,7 @@ check_subnet_exists(const char *subnet_name)
     ReleaseSysCache(tuple);
 }
 
-void AddRuleAttr(Oid ruleid, Oid attrid, bool is_user_attr, const char* value)
+void AddRuleAttr(Oid ruleid, Oid attrid, bool is_user_attr, const char* value, bool is_null)
 {
 	Relation	pg_abac_rule_rel;
 	TupleDesc	pg_abac_rule_dsc;
@@ -1130,7 +1130,15 @@ void AddRuleAttr(Oid ruleid, Oid attrid, bool is_user_attr, const char* value)
 	new_record[Anum_pg_abac_rule_rule_id - 1] = ObjectIdGetDatum(ruleid);
 	new_record[Anum_pg_abac_rule_attr_id - 1] = ObjectIdGetDatum(attrid);
 	new_record[Anum_pg_abac_rule_is_user_attr - 1] = BoolGetDatum(is_user_attr);
-	new_record[Anum_pg_abac_rule_value - 1] = CStringGetTextDatum(value);
+	
+	if(value == NULL){
+		new_record[Anum_pg_abac_rule_is_null - 1] = BoolGetDatum(is_null);
+		new_record_nulls[Anum_pg_abac_rule_value - 1] = true;
+	}
+	else{
+		new_record[Anum_pg_abac_rule_value - 1] = CStringGetTextDatum(value);
+		new_record[Anum_pg_abac_rule_is_null - 1] = BoolGetDatum(false);
+	}
 
 	tuple = heap_form_tuple(pg_abac_rule_dsc, new_record, new_record_nulls);
 	CatalogTupleInsert(pg_abac_rule_rel, tuple);
@@ -1170,10 +1178,17 @@ check_unique_attributes(List *attrs, const char *attr_type)
 
     foreach(lc, attrs)
     {
-        DefElem    *def = (DefElem *) lfirst(lc);
-        char       *attr_name = def->defname;
+		char *attr_name;
+		if(strcmp(attr_type, "environment") == 0){
+			DefElem    *def = (DefElem *) lfirst(lc);
+			attr_name = def->defname;
+		}
+		else{
+			AttributeTriplet *triplet = castNode(AttributeTriplet, (Node *)lfirst(lc));
+			attr_name = triplet->attr_name;
+		}
         ListCell   *lc2;
-        
+
         foreach(lc2, seen_names)
         {  
             char *seen_name = (char *) lfirst(lc2);
@@ -1320,26 +1335,28 @@ CreateAbacRule(ParseState *pstate, CreateAbacRuleStmt *stmt)
 	/* Process user attributes */
 	if (user_attrs != NIL)  {  
 		foreach(lc, user_attrs)  {  
-			DefElem    *def = (DefElem *) lfirst(lc);  
-			char	   *attr_name = def->defname;  
-			char	   *attr_value = strVal(def->arg);  
-			Oid			attr_id;  
-			
-			attr_id = get_user_attr_oid(attr_name, false);
-			AddRuleAttr(rule_id, attr_id, true, attr_value);
+			AttributeTriplet *triplet = castNode(AttributeTriplet, (Node *)lfirst(lc));
+			Oid attr_id = get_user_attr_oid(triplet->attr_name, false);
+
+			AddRuleAttr(rule_id,
+						attr_id,
+						true,
+						triplet->value ? strVal(triplet->value) : NULL,
+						triplet->is_null);
 		}
 	}
 	
 	/* Process resource attributes */
 	if (resource_attrs != NIL)  {
 		foreach(lc, resource_attrs)  {
-			DefElem    *def = (DefElem *) lfirst(lc);
-			char	   *attr_name = def->defname;
-			char	   *attr_value = strVal(def->arg);
-			Oid			attr_id;  
-			
-			attr_id = get_resource_attr_oid(attr_name, false);  
-			AddRuleAttr(rule_id, attr_id, false, attr_value);
+			AttributeTriplet *triplet = castNode(AttributeTriplet, (Node *)lfirst(lc));
+			Oid attr_id = get_resource_attr_oid(triplet->attr_name, false);
+
+			AddRuleAttr(rule_id,
+						attr_id,
+						false,
+						triplet->value ? strVal(triplet->value) : NULL,
+						triplet->is_null);
 		}  
 	}
 

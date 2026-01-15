@@ -666,6 +666,17 @@ makeDefElemExtended(char *nameSpace, char *name, Node *arg,
 	return res;
 }
 
+AttributeTriplet *  
+makeAttributeTriplet(char *attr_name, Node *value, bool is_null)  
+{  
+    AttributeTriplet *n = makeNode(AttributeTriplet);  
+      
+    n->attr_name = attr_name;  
+    n->value = value;  
+    n->is_null = is_null;
+	
+    return n;  
+}
 /*
  * makeFuncCall -
  *

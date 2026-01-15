@@ -3309,6 +3309,14 @@ typedef struct DropAbacRuleStmt
 	bool		missing_ok;		/* skip error if missing? */
 } DropAbacRuleStmt;
 
+typedef struct AttributeTriplet  
+{  
+    NodeTag     type;  
+    char       *attr_name;  
+    Node       *value;  
+    bool        is_null;  
+} AttributeTriplet;
+
 /* ----------------------
  *		{Create|Alter} SEQUENCE Statement
  * ----------------------

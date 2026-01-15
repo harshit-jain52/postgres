@@ -677,9 +677,9 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 %type <str> 	value_all
 %type <defelt> attribute_pair subnet_kv
-%type <list> attribute_pair_list user_attribute_clause resource_attribute_clause user_attribute_clause_opt resource_attribute_clause_opt attribute_clause env_attribute_clause env_attr_list subnet_kv_list
+%type <list> attribute_pair_list attribute_triplet_list user_attribute_clause resource_attribute_clause user_attribute_clause_opt resource_attribute_clause_opt attribute_clause env_attribute_clause env_attr_list subnet_kv_list
 %type <objtype> relation_type
-%type <node> attribute_value
+%type <node> attribute_value attribute_triplet
 /*
  * Non-keyword token types.  These are hard-wired into the "flex" lexer.
  * They must be listed first so that their numeric codes do not depend on
@@ -1762,7 +1762,7 @@ attribute_clause:
         ;
 
 user_attribute_clause:
-            USER_ATTRIBUTE '(' attribute_pair_list ')'
+            USER_ATTRIBUTE '(' attribute_triplet_list ')'
                 { $$ = $3; }
         ;
 
@@ -1774,7 +1774,7 @@ user_attribute_clause_opt:
         ;
 
 resource_attribute_clause:
-            RESOURCE_ATTRIBUTE '(' attribute_pair_list ')'
+            RESOURCE_ATTRIBUTE '(' attribute_triplet_list ')'
                 { $$ = $3; }
         ;
 
@@ -1801,6 +1801,22 @@ attribute_pair:
             name '=' attribute_value
                 { $$ = makeDefElem($1, $3, @1); }
         ;
+
+attribute_triplet_list:
+			attribute_triplet
+                { $$ = list_make1($1); }
+            | attribute_triplet_list ',' attribute_triplet
+                { $$ = lappend($1, $3); }
+        ;
+
+attribute_triplet:
+			name '=' attribute_value
+				{ $$ = (Node *)makeAttributeTriplet($1, $3, false); }
+			| name IS NULL_P
+				{ $$ = (Node *)makeAttributeTriplet($1, NULL, true); }
+			| name IS NOT NULL_P
+				{ $$ = (Node *)makeAttributeTriplet($1, NULL, false); }
+		;
 
 attribute_value:
       		NonReservedWord
