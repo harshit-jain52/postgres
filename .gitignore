@@ -49,3 +49,5 @@ confdefs.h
 conftest.c
 conftest.err
 conftest
+workload/venv
+workload/.env
