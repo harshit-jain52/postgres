@@ -88,6 +88,21 @@ def cleanup(cur):
 # CORE EXPERIMENT
 # -------------------------------------------------------
 
+def build_join_query(tables):
+    """
+    Builds a multi-table join query of the form:
+    SELECT * FROM t0
+    JOIN t1 ON t0.id = t1.id
+    JOIN t2 ON t0.id = t2.id ...
+    """
+    base = tables[0]
+    joins = " ".join(
+        f"JOIN {t} ON {base}.id = {t}.id"
+        for t in tables[1:]
+    )
+    return f"SELECT * FROM {base} {joins}"
+
+
 def run_experiment(
     mode: str,                  # baseline | env_only | full_abac
     num_abac_rules: int,
@@ -197,12 +212,12 @@ def run_experiment(
         user_conn.autocommit = True
         ucur = user_conn.cursor()
 
-        for t in tables:
-            start = time.perf_counter()
-            ucur.execute(sql.SQL("SELECT * FROM {}").format(sql.Identifier(t)))
-            ucur.fetchall()
-            end = time.perf_counter()
-            timings.append(end - start)
+        query = build_join_query(tables)
+        start = time.perf_counter()
+        ucur.execute(query)
+        ucur.fetchall()
+        end = time.perf_counter()
+        timings.append(end - start)
 
         user_conn.close()
 
@@ -282,14 +297,31 @@ if __name__ == "__main__":
     #             num_tables=10,
     #         )
 
-    for mode in [BASELINE, ENV_ONLY, FULL_ABAC]:
-        print(f"\n=== MODE: {mode.upper()} ===")
-        benchmark(
-            num_iterations=100,
-            mode=mode,
-            num_abac_rules=20,
-            num_user_attrs=10,
-            num_resource_attrs=10,
-            num_users=10,
-            num_tables=10,
-        )
+    # for mode in [BASELINE, ENV_ONLY, FULL_ABAC]:
+    #     print(f"\n=== MODE: {mode.upper()} ===")
+    #     benchmark(
+    #         num_iterations=100,
+    #         mode=mode,
+    #         num_abac_rules=20,
+    #         num_user_attrs=10,
+    #         num_resource_attrs=10,
+    #         num_users=10,
+    #         num_tables=10,
+    #     )
+
+    print("\n===== MULTI-TABLE QUERY EXPERIMENT =====")
+
+    for num_abac_rules in [0, 10, 50]:
+        for num_tables in [1, 5, 10]:
+            print(
+                f"\n=== Rules: {num_abac_rules}, Tables: {num_tables} ==="
+            )
+            benchmark(
+                num_iterations=100,
+                mode=FULL_ABAC if num_abac_rules > 0 else BASELINE,
+                num_abac_rules=num_abac_rules,
+                num_user_attrs=1,
+                num_resource_attrs=1,
+                num_users=10,
+                num_tables=num_tables,
+            )
