@@ -7,6 +7,10 @@ import psycopg2
 from psycopg2 import sql
 from dotenv import dotenv_values
 
+BASELINE = "baseline"
+ENV_ONLY = "env_only"
+FULL_ABAC = "full_abac"
+
 # -------------------------------------------------------
 # DB CONNECTION
 # -------------------------------------------------------
@@ -85,12 +89,14 @@ def cleanup(cur):
 # -------------------------------------------------------
 
 def run_experiment(
+    mode: str,                  # baseline | env_only | full_abac
     num_abac_rules: int,
     num_user_attrs: int,
     num_resource_attrs: int,
     num_users: int,
     num_tables: int,
 ):
+
     """
     Generates schema + ABAC config and measures average SELECT time.
     """
@@ -98,6 +104,11 @@ def run_experiment(
     conn = get_conn()
     conn.autocommit = True
     cur = conn.cursor()
+
+    cur.execute("""
+    SET ENV_ATTRIBUTE subnet =
+        loopback = '127.0.0.0/8';
+    """)
 
     # ---------- CREATE USERS ----------
     users = [f"u_{i}" for i in range(num_users)]
@@ -122,42 +133,54 @@ def run_experiment(
         cur.execute(sql.SQL("GRANT SELECT ON {} TO PUBLIC").format(sql.Identifier(t)))
 
     # ---------- ATTRIBUTES ----------
-    user_attrs = [f"ua_{i}" for i in range(num_user_attrs)]
-    res_attrs = [f"ra_{i}" for i in range(num_resource_attrs)]
+    user_attrs = []
+    res_attrs = []
 
-    for ua in user_attrs:
-        cur.execute(f"CREATE USER_ATTRIBUTE {ua}")
+    if mode == FULL_ABAC:
+        user_attrs = [f"ua_{i}" for i in range(num_user_attrs)]
+        res_attrs = [f"ra_{i}" for i in range(num_resource_attrs)]
 
-    for ra in res_attrs:
-        cur.execute(f"CREATE RESOURCE_ATTRIBUTE {ra}")
-
-    # Assign attribute values
-    for u in users:
         for ua in user_attrs:
-            cur.execute(
-                f"GRANT USER_ATTRIBUTE {{{ua} = v1}} TO {u}"
-            )
+            cur.execute(f"CREATE USER_ATTRIBUTE {ua}")
 
-    for t in tables:
         for ra in res_attrs:
-            cur.execute(
-                f"GRANT RESOURCE_ATTRIBUTE {{{ra} = v1}} TO TABLE {t}"
-            )
+            cur.execute(f"CREATE RESOURCE_ATTRIBUTE {ra}")
+
+        # Assign attribute values
+        for u in users:
+            for ua in user_attrs:
+                cur.execute(f"GRANT USER_ATTRIBUTE {{{ua} = v1}} TO {u}")
+
+        for t in tables:
+            for ra in res_attrs:
+                cur.execute(f"GRANT RESOURCE_ATTRIBUTE {{{ra} = v1}} TO TABLE {t}")
 
     # ---------- ABAC RULES ----------
-    if num_abac_rules > 0:
+    if mode != BASELINE and num_abac_rules > 0:
         for i in range(num_abac_rules):
             rule = f"r_{i}"
 
-            ua_clause = ", ".join(f"{ua} = v1" for ua in user_attrs[:1])
-            ra_clause = ", ".join(f"{ra} = v1" for ra in res_attrs[:1])
+            ua_clause = ""
+            ra_clause = ""
+
+            if mode == FULL_ABAC:
+                ua_conditions = ", ".join(f"{ua} = v1" for ua in user_attrs)
+                ra_conditions = ", ".join(f"{ra} = v1" for ra in res_attrs)
+
+                ua_clause = f"USER_ATTRIBUTE ({ua_conditions})"
+                ra_clause = f"RESOURCE_ATTRIBUTE ({ra_conditions})"
 
             cur.execute(f"""
                 CREATE ABAC_RULE {rule}
                 FOR SELECT OF
-                USER_ATTRIBUTE ({ua_clause})
-                RESOURCE_ATTRIBUTE ({ra_clause})
-                ENV_ATTRIBUTE (workday=true)
+                {ua_clause}
+                {ra_clause}
+                ENV_ATTRIBUTE (
+                    workday = true,
+                    worktime = true,
+                    subnet = loopback,
+                    server_load = 0.05
+                )
             """)
 
     # ---------- MEASUREMENT ----------
@@ -223,38 +246,50 @@ def benchmark(
 
 
 if __name__ == "__main__":
-    for num_abac_rules in [10, 50, 100, 500, 1000]:
-        for num_user_attrs in [10, 15, 20, 25, 30]:
-            print(f"\n=== ABAC Rules: {num_abac_rules}, User Attrs: {num_user_attrs} ===")
-            benchmark(
-                num_iterations=100,
-                num_abac_rules=num_abac_rules,
-                num_user_attrs=num_user_attrs,
-                num_resource_attrs=10,
-                num_users=10,
-                num_tables=10,
-            )
+    # for num_abac_rules in [10, 50, 100, 500, 1000]:
+    #     for num_user_attrs in [10, 15, 20, 25, 30]:
+    #         print(f"\n=== ABAC Rules: {num_abac_rules}, User Attrs: {num_user_attrs} ===")
+    #         benchmark(
+    #             num_iterations=100,
+    #             num_abac_rules=num_abac_rules,
+    #             num_user_attrs=num_user_attrs,
+    #             num_resource_attrs=10,
+    #             num_users=10,
+    #             num_tables=10,
+    #         )
     
-    for num_abac_rules in [10, 50, 100, 500, 1000]:
-        for num_users in [10, 15, 20, 25, 30]:
-            print(f"\n=== ABAC Rules: {num_abac_rules}, Users: {num_users} ===")
-            benchmark(
-                num_iterations=100,
-                num_abac_rules=num_abac_rules,        # 0 => PostgreSQL baseline (no ABAC)
-                num_user_attrs=10,
-                num_resource_attrs=10,
-                num_users=num_users,
-                num_tables=10,
-            )
+    # for num_abac_rules in [10, 50, 100, 500, 1000]:
+    #     for num_users in [10, 15, 20, 25, 30]:
+    #         print(f"\n=== ABAC Rules: {num_abac_rules}, Users: {num_users} ===")
+    #         benchmark(
+    #             num_iterations=100,
+    #             num_abac_rules=num_abac_rules,        # 0 => PostgreSQL baseline (no ABAC)
+    #             num_user_attrs=10,
+    #             num_resource_attrs=10,
+    #             num_users=num_users,
+    #             num_tables=10,
+    #         )
 
-    for num_user_attrs in [10, 20, 50, 100]:
-        for num_users in [10, 20, 50, 100]:
-            print(f"\n=== User Attrs: {num_user_attrs}, Users: {num_users} ===")
-            benchmark(
-                num_iterations=100,
-                num_abac_rules=10,
-                num_user_attrs=num_user_attrs,
-                num_resource_attrs=10,
-                num_users=num_users,
-                num_tables=10,
-            )
+    # for num_user_attrs in [10, 20, 50, 100]:
+    #     for num_users in [10, 20, 50, 100]:
+    #         print(f"\n=== User Attrs: {num_user_attrs}, Users: {num_users} ===")
+    #         benchmark(
+    #             num_iterations=100,
+    #             num_abac_rules=10,
+    #             num_user_attrs=num_user_attrs,
+    #             num_resource_attrs=10,
+    #             num_users=num_users,
+    #             num_tables=10,
+    #         )
+
+    for mode in [BASELINE, ENV_ONLY, FULL_ABAC]:
+        print(f"\n=== MODE: {mode.upper()} ===")
+        benchmark(
+            num_iterations=100,
+            mode=mode,
+            num_abac_rules=20,
+            num_user_attrs=10,
+            num_resource_attrs=10,
+            num_users=10,
+            num_tables=10,
+        )
