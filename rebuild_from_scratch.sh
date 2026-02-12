@@ -4,12 +4,21 @@ PG_USER="postgres"
 
 clear
 
+cd src/tee
+make clean -f enclave.makefile
+make -f enclave.makefile
+cd ../../
+
 ./stop_server.sh
 
 # ./configure
 make clean
 make -j 8
 sudo make install
+
+sudo cp src/tee/enclave.signed.so /usr/local/pgsql/lib/
+sudo chown postgres:postgres /usr/local/pgsql/lib/enclave.signed.so
+sudo chmod 755 /usr/local/pgsql/lib/enclave.signed.so
 
 sudo rm -rf "$DATA_DIR"
 sudo mkdir -p "$DATA_DIR"

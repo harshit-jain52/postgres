@@ -70,6 +70,11 @@
 #include "utils/syscache.h"
 #include "utils/timeout.h"
 
+#include "sgx_urts.h"
+#include "Enclave_u.h"
+#define ABAC_ENV_FILENAME "abac_env.sealed"
+extern sgx_enclave_id_t global_eid;
+
 static HeapTuple GetDatabaseTuple(const char *dbname);
 static HeapTuple GetDatabaseTupleByOid(Oid dboid);
 static void PerformAuthentication(Port *port);
@@ -85,8 +90,9 @@ static void ClientCheckTimeoutHandler(void);
 static bool ThereIsAtLeastOneRole(void);
 static void process_startup_options(Port *port, bool am_superuser);
 static void process_settings(Oid databaseid, Oid roleid);
-
-
+static void sgx_backend_exit(int code, Datum arg);
+static void sgx_load_or_init_env(void);
+static void GetAbacEnvPath(char *path, size_t len);
 /*** InitPostgres support ***/
 
 
@@ -721,6 +727,7 @@ InitPostgres(const char *in_dbname, Oid dboid,
 
 	elog(DEBUG3, "InitPostgres");
 
+
 	/*
 	 * Add my PGPROC struct to the ProcArray.
 	 *
@@ -1233,6 +1240,31 @@ InitPostgres(const char *in_dbname, Oid dboid,
 	/* close the transaction we started above */
 	if (!bootstrap)
 		CommitTransactionCommand();
+	
+	/* Create enclave */
+	if (global_eid == 0)
+	{
+		char enclave_path[MAXPGPATH];
+		sgx_status_t ret;
+
+		snprintf(enclave_path, MAXPGPATH,
+				"%s/enclave.signed.so",
+				pkglib_path);
+
+		ret = sgx_create_enclave(enclave_path,
+								SGX_DEBUG_FLAG,
+								NULL,
+								NULL,
+								&global_eid,
+								NULL);
+
+		if (ret != SGX_SUCCESS)
+			elog(FATAL, "Failed to create SGX enclave (error %d)", ret);
+
+		on_proc_exit(sgx_backend_exit, 0);
+
+		sgx_load_or_init_env();
+	}
 }
 
 /*
@@ -1446,4 +1478,95 @@ ThereIsAtLeastOneRole(void)
 	table_close(pg_authid_rel, AccessShareLock);
 
 	return result;
+}
+
+static void
+sgx_backend_exit(int code, Datum arg)
+{
+    if (global_eid != 0)
+    {
+        sgx_destroy_enclave(global_eid);
+        global_eid = 0;
+    }
+}
+
+static void
+sgx_load_or_init_env(void)
+{
+    char path[MAXPGPATH];
+    FILE *fp;
+    sgx_status_t ret;
+
+    GetAbacEnvPath(path, sizeof(path));
+
+    fp = fopen(path, "rb");
+
+    if (fp != NULL)
+    {
+        /* File exists → read and unseal */
+        fseek(fp, 0, SEEK_END);
+        long size = ftell(fp);
+        rewind(fp);
+
+        sgx_sealed_data_t *sealed_blob = palloc(size);
+
+        if (fread(sealed_blob, 1, size, fp) != size)
+            elog(FATAL, "Failed to read sealed ABAC env file");
+
+        fclose(fp);
+
+        ret = enclave_unseal_env(global_eid,
+                                 &ret,
+                                 sealed_blob,
+                                 size);
+
+        if (ret != SGX_SUCCESS)
+            elog(FATAL, "Failed to unseal ABAC env (error %d)", ret);
+
+        pfree(sealed_blob);
+
+        elog(LOG, "ABAC environment unsealed successfully");
+    }
+    else
+    {
+        /* First-time initialization */
+        uint32 sealed_size =
+            sizeof(sgx_sealed_data_t) + 4096; /* safe upper bound */
+
+        sgx_sealed_data_t *sealed_blob = palloc(sealed_size);
+
+        ret = enclave_init_env(global_eid,
+                               &ret,
+                               sealed_blob,
+                               sealed_size);
+
+        if (ret != SGX_SUCCESS)
+            elog(FATAL, "Failed to initialize ABAC env");
+
+        /* Seal after initialization */
+        ret = enclave_seal_env(global_eid,
+                               &ret,
+                               sealed_blob,
+                               sealed_size);
+
+        if (ret != SGX_SUCCESS)
+            elog(FATAL, "Failed to seal ABAC env");
+
+        fp = fopen(path, "wb");
+        if (!fp)
+            elog(FATAL, "Could not create ABAC env file");
+
+        fwrite(sealed_blob, 1, sealed_size, fp);
+        fclose(fp);
+
+        pfree(sealed_blob);
+
+        elog(LOG, "ABAC environment initialized and sealed");
+    }
+}
+
+static void
+GetAbacEnvPath(char *path, size_t len)
+{
+    snprintf(path, len, "%s/%s", DataDir, ABAC_ENV_FILENAME);
 }

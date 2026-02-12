@@ -1,0 +1,41 @@
+enclave {
+    from "sgx_tstdc.edl" import *;
+    include "sgx_tseal.h"
+
+    trusted {
+
+        public sgx_status_t enclave_init_env(
+            [out, size=sealed_size] sgx_sealed_data_t* sealed_data,
+            uint32_t sealed_size
+        );
+
+        public sgx_status_t enclave_set_workday(
+            [in, size=7] uint8_t* workday_arr
+        );
+
+        public sgx_status_t enclave_set_timewindow(
+            int start_min,
+            int end_min
+        );
+
+        public sgx_status_t enclave_set_subnet(
+            [in, string] const char* name,
+            uint32_t network,
+            uint32_t mask
+        );
+
+        public sgx_status_t enclave_seal_env(
+            [out, size=sealed_size] sgx_sealed_data_t* sealed_data,
+            uint32_t sealed_size
+        );
+
+        public sgx_status_t enclave_unseal_env(
+            [in, size=sealed_size] const sgx_sealed_data_t* sealed_data,
+            uint32_t sealed_size
+        );
+    };
+
+    untrusted {
+        void ocall_print([in, string] const char *str);
+    };
+};

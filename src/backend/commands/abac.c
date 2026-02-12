@@ -52,6 +52,10 @@
 #include "utils/syscache.h"
 #include "utils/varlena.h"
 
+#include "Enclave_u.h"
+#include "sgx_urts.h"
+extern sgx_enclave_id_t global_eid;
+
 Oid
 CreateUserAttribute(ParseState *pstate, CreateUserAttributeStmt *stmt){
 	Relation	pg_user_attr_rel;

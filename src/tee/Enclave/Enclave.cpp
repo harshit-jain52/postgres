@@ -1,0 +1,88 @@
+#include "Enclave_t.h"
+#include "sgx_tseal.h"
+#include <cstring>
+
+typedef struct _env_config_t {
+    uint8_t workday[7];
+    int start_minute;
+    int end_minute;
+
+    int subnet_count;
+    struct {
+        char name[64];
+        uint32_t network;
+        uint32_t mask;
+    } subnets[32];
+
+} env_config_t;
+
+static env_config_t g_env_config;
+
+sgx_status_t enclave_init_env(sgx_sealed_data_t* sealed_data,
+                              uint32_t sealed_size)
+{
+    memset(&g_env_config, 0, sizeof(g_env_config));
+    g_env_config.start_minute = 0;
+    g_env_config.end_minute = 24 * 60;
+    g_env_config.subnet_count = 0;
+    return SGX_SUCCESS;
+}
+
+sgx_status_t enclave_set_workday(uint8_t* workday_arr)
+{
+    memcpy(g_env_config.workday, workday_arr, 7);
+    return SGX_SUCCESS;
+}
+
+sgx_status_t enclave_set_timewindow(int start_min, int end_min)
+{
+    g_env_config.start_minute = start_min;
+    g_env_config.end_minute   = end_min;
+    return SGX_SUCCESS;
+}
+
+sgx_status_t enclave_set_subnet(const char* name,
+                                uint32_t network,
+                                uint32_t mask)
+{
+    if (g_env_config.subnet_count >= 32)
+        return SGX_ERROR_OUT_OF_MEMORY;
+
+    int idx = g_env_config.subnet_count++;
+
+    strncpy(g_env_config.subnets[idx].name, name, 63);
+    g_env_config.subnets[idx].network = network;
+    g_env_config.subnets[idx].mask = mask;
+
+    return SGX_SUCCESS;
+}
+
+sgx_status_t enclave_seal_env(sgx_sealed_data_t* sealed_data,
+                              uint32_t sealed_size)
+{
+    uint32_t required_size =
+        sgx_calc_sealed_data_size(0, sizeof(env_config_t));
+
+    if (sealed_size < required_size)
+        return SGX_ERROR_INVALID_PARAMETER;
+
+    return sgx_seal_data(0,
+                         NULL,
+                         sizeof(env_config_t),
+                         (uint8_t*)&g_env_config,
+                         sealed_size,
+                         sealed_data);
+}
+
+sgx_status_t enclave_unseal_env(const sgx_sealed_data_t* sealed_data,
+                                uint32_t sealed_size)
+{
+    uint32_t mac_len = 0;
+    uint32_t decrypt_len = sizeof(env_config_t);
+
+    return sgx_unseal_data(sealed_data,
+                           NULL,
+                           &mac_len,
+                           (uint8_t*)&g_env_config,
+                           &decrypt_len);
+}
