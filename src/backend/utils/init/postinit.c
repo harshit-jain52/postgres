@@ -93,6 +93,48 @@ static void process_settings(Oid databaseid, Oid roleid);
 static void sgx_backend_exit(int code, Datum arg);
 static void sgx_load_or_init_env(void);
 static void GetAbacEnvPath(char *path, size_t len);
+
+static void
+debug_print_workday(void)
+{
+    uint8_t arr[7];
+    sgx_status_t ret;
+
+    ret = enclave_debug_get_workday(global_eid,
+                                    &ret,
+                                    arr);
+
+    elog(LOG, "WORKDAY STATE: %d %d %d %d %d %d %d",
+         arr[0], arr[1], arr[2],
+         arr[3], arr[4], arr[5],
+         arr[6]);
+}
+
+static void debug_print_timewindow(void)
+{
+    int start, end;
+    sgx_status_t ret;
+
+    ret = enclave_debug_get_timewindow(global_eid,
+                                       &ret,
+                                       &start,
+                                       &end);
+
+    elog(LOG, "TIMEWINDOW: %d -> %d", start, end);
+}
+
+static void debug_print_subnet_count(void)
+{
+	int count;
+	sgx_status_t ret;
+
+	ret = enclave_debug_get_subnet_count(global_eid,
+									   &ret,
+									   &count);
+
+	elog(LOG, "SUBNET COUNT: %d", count);
+}
+
 /*** InitPostgres support ***/
 
 
@@ -1265,6 +1307,10 @@ InitPostgres(const char *in_dbname, Oid dboid,
 
 		sgx_load_or_init_env();
 	}
+
+	debug_print_workday();
+	debug_print_timewindow();
+	debug_print_subnet_count();
 }
 
 /*
@@ -1530,8 +1576,14 @@ sgx_load_or_init_env(void)
     else
     {
         /* First-time initialization */
-        uint32 sealed_size =
-            sizeof(sgx_sealed_data_t) + 4096; /* safe upper bound */
+		uint32 sealed_size;
+
+        ret = enclave_get_sealed_size(global_eid,
+                              &ret,
+                              &sealed_size);
+		
+		if (ret != SGX_SUCCESS)
+    		elog(FATAL, "Failed to get sealed size");
 
         sgx_sealed_data_t *sealed_blob = palloc(sealed_size);
 

@@ -22,6 +22,10 @@ sgx_status_t enclave_init_env(sgx_sealed_data_t* sealed_data,
                               uint32_t sealed_size)
 {
     memset(&g_env_config, 0, sizeof(g_env_config));
+    for (int i = 1; i <= 5; i++)
+        g_env_config.workday[i] = 1;
+    g_env_config.workday[0] = 0;
+    g_env_config.workday[6] = 0;
     g_env_config.start_minute = 0;
     g_env_config.end_minute = 24 * 60;
     g_env_config.subnet_count = 0;
@@ -85,4 +89,50 @@ sgx_status_t enclave_unseal_env(const sgx_sealed_data_t* sealed_data,
                            &mac_len,
                            (uint8_t*)&g_env_config,
                            &decrypt_len);
+}
+
+sgx_status_t enclave_get_sealed_size(uint32_t* sealed_size)
+{
+    *sealed_size =
+        sgx_calc_sealed_data_size(0, sizeof(env_config_t));
+    return SGX_SUCCESS;
+}
+
+sgx_status_t enclave_subnet_exists(const char* name,
+                                   int* exists)
+{
+    *exists = 0;
+
+    for (int i = 0; i < g_env_config.subnet_count; i++)
+    {
+        if (strncmp(g_env_config.subnets[i].name,
+                    name,
+                    64) == 0)
+        {
+            *exists = 1;
+            return SGX_SUCCESS;
+        }
+    }
+
+    return SGX_SUCCESS;
+}
+
+sgx_status_t enclave_debug_get_workday(uint8_t* arr)
+{
+    memcpy(arr, g_env_config.workday, 7);
+    return SGX_SUCCESS;
+}
+
+sgx_status_t enclave_debug_get_timewindow(int* start_min,
+                                          int* end_min)
+{
+    *start_min = g_env_config.start_minute;
+    *end_min   = g_env_config.end_minute;
+    return SGX_SUCCESS;
+}
+
+sgx_status_t enclave_debug_get_subnet_count(int* count)
+{
+    *count = g_env_config.subnet_count;
+    return SGX_SUCCESS;
 }

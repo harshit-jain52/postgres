@@ -49,12 +49,61 @@
 #include "utils/builtins.h"
 #include "utils/catcache.h"
 #include "utils/fmgroids.h"
+#include "utils/inet.h"
 #include "utils/syscache.h"
 #include "utils/varlena.h"
+#include <arpa/inet.h>
 
 #include "Enclave_u.h"
 #include "sgx_urts.h"
 extern sgx_enclave_id_t global_eid;
+#define ABAC_ENV_FILENAME "abac_env.sealed"
+
+static void
+GetAbacEnvPath(char *path, size_t len)
+{
+    snprintf(path, len, "%s/%s", DataDir, ABAC_ENV_FILENAME);
+}
+
+static void
+sgx_reseal_env(void)
+{
+    char path[MAXPGPATH];
+    uint32_t sealed_size;
+    sgx_status_t ret;
+    FILE *fp;
+
+	ret = enclave_get_sealed_size(global_eid,
+								&ret,
+								&sealed_size);
+
+	if (ret != SGX_SUCCESS)
+		ereport(ERROR,
+				(errmsg("Failed to get sealed size from enclave")));
+
+    sgx_sealed_data_t *sealed_blob = palloc(sealed_size);
+
+    ret = enclave_seal_env(global_eid,
+                           &ret,
+                           sealed_blob,
+                           sealed_size);
+
+    if (ret != SGX_SUCCESS)
+        ereport(ERROR,
+                (errmsg("Failed to seal ABAC environment")));
+
+    GetAbacEnvPath(path, sizeof(path));
+
+    fp = fopen(path, "wb");
+    if (!fp)
+        ereport(ERROR,
+                (errmsg("Could not write ABAC sealed file")));
+
+    fwrite(sealed_blob, 1, sealed_size, fp);
+    fclose(fp);
+
+    pfree(sealed_blob);
+}
 
 Oid
 CreateUserAttribute(ParseState *pstate, CreateUserAttributeStmt *stmt){
@@ -874,250 +923,183 @@ void SetEnvAttribute(ParseState *pstate, SetEnvAttributeStmt *stmt){
 						stmt->attribute)));
 }
 
-void handle_workday(SetEnvAttributeStmt *stmt){
-	Relation	pg_abac_env_workday_rel;
-	TupleDesc	pg_abac_env_workday_dsc;
-	ListCell   *item;
-	const char *const days[] = {"sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"};
-	bool is_workday[7] = {false, false, false, false, false, false, false};
-	HeapTuple	tuple;  
-	HeapTuple	newtuple;  
-	Datum		values[Natts_pg_abac_env_workday];  
-	bool		nulls[Natts_pg_abac_env_workday];  
-	bool		replaces[Natts_pg_abac_env_workday];
-	
-	foreach(item, stmt->values){
-		Node *node = (Node *) lfirst(item);
-		char *day = strVal(lfirst(item));
-		bool valid_day = false;
-		int i;
+void handle_workday(SetEnvAttributeStmt *stmt)
+{
+    ListCell *item;
+    uint8_t workday_arr[7] = {0};
+    const char *days[] = {
+        "sunday","monday","tuesday",
+        "wednesday","thursday","friday","saturday"
+    };
 
-		/* Extract string value from the node */  
-		if (IsA(node, A_Const))  
-		{  
-			A_Const *con = (A_Const *) node;  
-			day = strVal(&con->val);  
-		}  
-		else if (IsA(node, String))  
-		{  
-			day = strVal(node);  
-		}  
-		else  
-		{  
-			ereport(ERROR,  
-					(errcode(ERRCODE_SYNTAX_ERROR),  
-					errmsg("invalid value type for environment attribute")));  
-		} 
-		
-		for(i = 0; i < 7; i++){
-			if(strcmp(day, days[i]) == 0){
-				valid_day = true;
-				is_workday[i] = true;
-				break;
-			}
-		}
+    foreach(item, stmt->values)
+    {
+        Node *node = lfirst(item);
+        char *day;
+        bool valid = false;
 
-		if(!valid_day){
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("invalid value \"%s\" for environment attribute \"%s\"",
-							day, stmt->attribute),
-					 errhint("Valid values are: sunday, monday, tuesday, wednesday, thursday, friday, saturday.")));
-		}
-	}
+        if (IsA(node, A_Const))
+            day = strVal(&((A_Const*)node)->val);
+        else if (IsA(node, String))
+            day = strVal(node);
+        else
+            ereport(ERROR,
+                    (errmsg("invalid workday value")));
 
-	pg_abac_env_workday_rel = table_open(AbacEnvWorkdayRelationId, RowExclusiveLock);
-	pg_abac_env_workday_dsc = RelationGetDescr(pg_abac_env_workday_rel);
+        for (int i = 0; i < 7; i++)
+        {
+            if (strcmp(day, days[i]) == 0)
+            {
+                workday_arr[i] = 1;
+                valid = true;
+                break;
+            }
+        }
 
-	/* Update each day of the week */  
-	for(int i = 0; i < 7; i++){  
-  
-		tuple = SearchSysCache1(ABACENVWORKDAY, Int16GetDatum(i));  
-		if (!HeapTupleIsValid(tuple))
-			elog(ERROR, "cache lookup failed for day_of_week %d", i);
+        if (!valid)
+            ereport(ERROR,
+                    (errmsg("invalid workday \"%s\"", day)));
+    }
 
-		memset(values, 0, sizeof(values));
-		memset(nulls, false, sizeof(nulls));
-		memset(replaces, false, sizeof(replaces));
+    sgx_status_t ret;
+    ret = enclave_set_workday(global_eid,
+                              &ret,
+                              workday_arr);
 
-		values[Anum_pg_abac_env_workday_is_workday - 1] = BoolGetDatum(is_workday[i]);  
-		replaces[Anum_pg_abac_env_workday_is_workday - 1] = true;  
-  
-		newtuple = heap_modify_tuple(tuple, pg_abac_env_workday_dsc,  
-									  values, nulls, replaces);  
-		  
-		CatalogTupleUpdate(pg_abac_env_workday_rel, &newtuple->t_self, newtuple);  
-  
-		heap_freetuple(newtuple);  
-		ReleaseSysCache(tuple);  
-	}
+    if (ret != SGX_SUCCESS)
+        ereport(ERROR,
+                (errmsg("SGX enclave set_workday failed")));
 
-	table_close(pg_abac_env_workday_rel, NoLock);
+    sgx_reseal_env();
 }
 
-void handle_timewindow(SetEnvAttributeStmt *stmt){
-	int vals[4];
-	int idx = 0;
-	ListCell *lc;
-	int sh, sm, eh, em;
-	int start_min, end_min;
-	Relation rel;
-	TupleDesc dsc;
-	HeapTuple tuple, newtuple;
-	Datum values[Natts_pg_abac_env_timewindow];
-	bool nulls[Natts_pg_abac_env_timewindow];
-	bool replaces[Natts_pg_abac_env_timewindow];
-	
-	if (list_length(stmt->values) != 4)
-    	ereport(ERROR,
-			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			errmsg("timewindow requires 4 values: start_hour, start_minute, end_hour, end_minute")));
+void handle_timewindow(SetEnvAttributeStmt *stmt)
+{
+    int vals[4];
+    int idx = 0;
+    ListCell *lc;
 
+    if (list_length(stmt->values) != 4)
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("timewindow requires 4 values: start_hour, start_minute, end_hour, end_minute")));
 
-	foreach(lc, stmt->values)
-	{
-		Node *node = (Node *) lfirst(lc);
+    foreach(lc, stmt->values)
+    {
+        Node *node = lfirst(lc);
 
-		if (!IsA(node, A_Const) || !IsA(&((A_Const *)node)->val, Integer))
-			ereport(ERROR,
-				(errcode(ERRCODE_SYNTAX_ERROR),
-				errmsg("timewindow values must be integers")));
+        if (!IsA(node, A_Const) ||
+            !IsA(&((A_Const *)node)->val, Integer))
+            ereport(ERROR,
+                    (errcode(ERRCODE_SYNTAX_ERROR),
+                     errmsg("timewindow values must be integers")));
 
-		vals[idx++] = intVal(&((A_Const *)node)->val);
-	}
+        vals[idx++] = intVal(&((A_Const *)node)->val);
+    }
 
-	sh = vals[0], sm = vals[1], eh = vals[2], em = vals[3];
+    int sh = vals[0], sm = vals[1];
+    int eh = vals[2], em = vals[3];
 
-	if (sh < 0 || sh > 23 || eh < 0 || eh > 23 ||
-		sm < 0 || sm > 59 || em < 0 || em > 59)
-		ereport(ERROR,
-			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			errmsg("invalid hour/minute in timewindow")));
+    if (sh < 0 || sh > 23 ||
+        eh < 0 || eh > 23 ||
+        sm < 0 || sm > 59 ||
+        em < 0 || em > 59)
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("invalid hour/minute in timewindow")));
 
-	start_min = sh * 60 + sm;
-	end_min   = eh * 60 + em;
+    int start_min = sh * 60 + sm;
+    int end_min   = eh * 60 + em;
 
-	if (start_min >= end_min)
-		ereport(ERROR,
-			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			errmsg("start time must be earlier than end time")));
+    if (start_min >= end_min)
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("start time must be earlier than end time")));
 
+    sgx_status_t ret;
 
-	rel = table_open(AbacEnvTimewindowRelationId, RowExclusiveLock);
-	dsc = RelationGetDescr(rel);
+    ret = enclave_set_timewindow(global_eid,
+                                 &ret,
+                                 start_min,
+                                 end_min);
 
-	tuple = SearchSysCache1(ABACENVTIMEWINDOW, ObjectIdGetDatum(1));
-	if (!HeapTupleIsValid(tuple))
-		elog(ERROR, "cache lookup failed for pg_abac_env_timewindow");
+    if (ret != SGX_SUCCESS)
+        ereport(ERROR,
+                (errmsg("SGX enclave_set_timewindow failed")));
 
-	memset(values, 0, sizeof(values));
-	memset(nulls, false, sizeof(nulls));
-	memset(replaces, false, sizeof(replaces));
-
-	values[Anum_pg_abac_env_timewindow_start_minute - 1] = Int32GetDatum(start_min);
-	values[Anum_pg_abac_env_timewindow_end_minute - 1]   = Int32GetDatum(end_min);
-	replaces[Anum_pg_abac_env_timewindow_start_minute - 1] = true;
-	replaces[Anum_pg_abac_env_timewindow_end_minute - 1]   = true;
-
-	newtuple = heap_modify_tuple(tuple, dsc, values, nulls, replaces);
-	CatalogTupleUpdate(rel, &newtuple->t_self, newtuple);
-
-	heap_freetuple(newtuple);
-	ReleaseSysCache(tuple);
-	table_close(rel, NoLock);
+    sgx_reseal_env();
 }
 
 void
 handle_subnet(SetEnvAttributeStmt *stmt)
 {
-    Relation    rel;
-    TupleDesc   dsc;
-    ListCell   *lc;
-
-    rel = table_open(AbacEnvSubnetRelationId, RowExclusiveLock);
-    dsc = RelationGetDescr(rel);
+    ListCell *lc;
 
     foreach(lc, stmt->values)
     {
-        DefElem    *def;
-        char       *subnet_name;
-        char       *cidr_str;
-        Datum       cidr_datum;
-        HeapTuple   oldtuple;
-        HeapTuple   newtuple;
-        Datum       values[Natts_pg_abac_env_subnet];
-        bool        nulls[Natts_pg_abac_env_subnet];
-        bool        replaces[Natts_pg_abac_env_subnet];
-
-        def = (DefElem *) lfirst(lc);
-        subnet_name = def->defname;
+        DefElem *def = (DefElem *) lfirst(lc);
+        char *subnet_name = def->defname;
+        char *cidr_str;
+        Datum cidr_datum;
+        inet *ip;
+        uint32_t network;
+        uint32_t mask_bits;
+        sgx_status_t ret;
 
         if (!IsA(def->arg, String))
             ereport(ERROR,
-                (errcode(ERRCODE_SYNTAX_ERROR),
-                 errmsg("subnet value must be a CIDR string")));
+                    (errcode(ERRCODE_SYNTAX_ERROR),
+                     errmsg("subnet value must be a CIDR string")));
 
         cidr_str = strVal(def->arg);
 
         cidr_datum = DirectFunctionCall1(cidr_in,
                                          CStringGetDatum(cidr_str));
 
-        oldtuple = SearchSysCache1(ABACENVSUBNET,
-                                   CStringGetDatum(subnet_name));
+        ip = DatumGetInetPP(cidr_datum);
 
-        memset(values, 0, sizeof(values));
-        memset(nulls, false, sizeof(nulls));
-        memset(replaces, false, sizeof(replaces));
+        if (ip_family(ip) != PGSQL_AF_INET)
+			ereport(ERROR,
+					(errmsg("only IPv4 subnets supported")));
 
-        values[Anum_pg_abac_env_subnet_network - 1] = cidr_datum;
-        replaces[Anum_pg_abac_env_subnet_network - 1] = true;
+        network = ntohl(((struct sockaddr_in *) &ip->inet_data)->sin_addr.s_addr);
+        mask_bits = ip_bits(ip);
 
-        if (HeapTupleIsValid(oldtuple))
-        {
-            /* UPDATE existing subnet */
-            newtuple = heap_modify_tuple(oldtuple,
-                                         dsc,
-                                         values,
-                                         nulls,
-                                         replaces);
+        ret = enclave_set_subnet(global_eid,
+                                 &ret,
+                                 subnet_name,
+                                 network,
+                                 mask_bits);
 
-            CatalogTupleUpdate(rel, &oldtuple->t_self, newtuple);
-
-            heap_freetuple(newtuple);
-            ReleaseSysCache(oldtuple);
-        }
-        else
-        {
-            /* INSERT new subnet */
-            values[Anum_pg_abac_env_subnet_subnet_name - 1] =
-                DirectFunctionCall1(namein,
-                                    CStringGetDatum(subnet_name));
-
-            newtuple = heap_form_tuple(dsc, values, nulls);
-            CatalogTupleInsert(rel, newtuple);
-            heap_freetuple(newtuple);
-        }
+        if (ret != SGX_SUCCESS)
+            ereport(ERROR,
+                    (errmsg("SGX enclave_set_subnet failed")));
     }
 
-    table_close(rel, NoLock);
+    sgx_reseal_env();
 }
 
 void
 check_subnet_exists(const char *subnet_name)
 {
-    HeapTuple tuple;
+    sgx_status_t ret;
+    int exists = 0;
 
-    tuple = SearchSysCache1(ABACENVSUBNET,
-                            CStringGetDatum(subnet_name));
+    ret = enclave_subnet_exists(global_eid,
+                                &ret,
+                                subnet_name,
+                                &exists);
 
-    if (!HeapTupleIsValid(tuple))
+    if (ret != SGX_SUCCESS)
         ereport(ERROR,
-            (errcode(ERRCODE_UNDEFINED_OBJECT),
-             errmsg("environment subnet \"%s\" does not exist",
-                    subnet_name),
-             errhint("Use SET ENV_ATTRIBUTE subnet to define it first.")));
+                (errmsg("SGX enclave_subnet_exists failed")));
 
-    ReleaseSysCache(tuple);
+    if (!exists)
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_OBJECT),
+                 errmsg("environment subnet \"%s\" does not exist",
+                        subnet_name),
+                 errhint("Use SET ENV_ATTRIBUTE subnet to define it first.")));
 }
 
 void AddRuleAttr(Oid ruleid, Oid attrid, bool is_user_attr, const char* value, bool is_null)

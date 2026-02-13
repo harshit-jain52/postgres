@@ -33,6 +33,29 @@ enclave {
             [in, size=sealed_size] const sgx_sealed_data_t* sealed_data,
             uint32_t sealed_size
         );
+
+        public sgx_status_t enclave_get_sealed_size(
+            [out] uint32_t* sealed_size
+        );
+
+        public sgx_status_t enclave_subnet_exists(
+            [in, string] const char* name,
+            [out] int* exists
+        );
+
+        public sgx_status_t enclave_debug_get_workday(
+            [out, size=7] uint8_t* arr
+        );
+
+        public sgx_status_t enclave_debug_get_timewindow(
+            [out] int* start_min,
+            [out] int* end_min
+        );
+
+        public sgx_status_t enclave_debug_get_subnet_count(
+            [out] int* count
+        );
+
     };
 
     untrusted {
