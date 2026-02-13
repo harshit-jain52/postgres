@@ -117,6 +117,71 @@ sgx_status_t enclave_subnet_exists(const char* name,
     return SGX_SUCCESS;
 }
 
+sgx_status_t enclave_check_env(int day_of_week,
+                               int current_minute,
+                               uint32_t client_ip,
+                               const char* subnet_name,
+                               int workday_value,
+                               int worktime_value,
+                               int check_workday,
+                               int check_worktime,
+                               int check_subnet,
+                               int* result)
+{
+    *result = 1;
+
+    if (check_workday)
+    {
+        if (workday_value != g_env_config.workday[day_of_week])
+        {
+            *result = 0;
+            return SGX_SUCCESS;
+        }
+    }
+
+    if (check_worktime)
+    {   
+        if(!(worktime_value == (current_minute >= g_env_config.start_minute && current_minute <= g_env_config.end_minute)))
+        {
+            *result = 0;
+            return SGX_SUCCESS;
+        }
+    }
+
+    if (check_subnet)
+    {
+        bool matched = false;
+
+        for (int i = 0; i < g_env_config.subnet_count; i++)
+        {
+            if (strncmp(g_env_config.subnets[i].name,
+                        subnet_name,
+                        64) == 0)
+            {
+                uint32_t mask =
+                    (g_env_config.subnets[i].mask == 0)
+                        ? 0
+                        : 0xFFFFFFFF << (32 - g_env_config.subnets[i].mask);
+
+                if ((client_ip & mask) ==
+                    (g_env_config.subnets[i].network & mask))
+                {
+                    matched = true;
+                }
+                break;
+            }
+        }
+
+        if (!matched)
+        {
+            *result = 0;
+            return SGX_SUCCESS;
+        }
+    }
+
+    return SGX_SUCCESS;
+}
+
 sgx_status_t enclave_debug_get_workday(uint8_t* arr)
 {
     memcpy(arr, g_env_config.workday, 7);

@@ -95,6 +95,9 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
+#include "Enclave_u.h"
+#include "sgx_urts.h"
+extern sgx_enclave_id_t global_eid;
 
 /*
  * Internal format used by ALTER DEFAULT PRIVILEGES.
@@ -5070,17 +5073,70 @@ RemoveRoleFromInitPriv(Oid roleid, Oid classid, Oid objid, int32 objsubid)
 	table_close(rel, RowExclusiveLock);
 }
 
-bool  
+bool
 check_abac_env_conditions(bool is_workday, bool is_workday_null,
                           bool is_worktime, bool is_worktime_null,
                           const char *subnet_name, bool subnet_name_null,
                           float8 allowed_server_load, bool server_load_null)
 {
-	if(!is_workday_null && is_workday != check_workday()) return false;
-	if(!is_worktime_null && is_worktime != check_worktime()) return false;
-	if(!server_load_null && (allowed_server_load < get_connection_load_ratio())) return false;
-	return subnet_name_null || check_subnet(subnet_name);
+    /* PostgreSQL-side server load check */
+    if (!server_load_null &&
+        allowed_server_load < get_connection_load_ratio())
+        return false;
+
+    /* Gather runtime context */
+    time_t rawtime;
+    struct tm *timeinfo;
+    int day_of_week;
+    int current_minute;
+    uint32_t client_ip = 0;
+    int result = 1;
+    sgx_status_t ret;
+
+    time(&rawtime);
+    timeinfo = localtime(&rawtime);
+
+    day_of_week = timeinfo->tm_wday;
+    current_minute = timeinfo->tm_hour * 60 + timeinfo->tm_min;
+
+    if (!subnet_name_null &&
+        MyProcPort != NULL &&
+        MyProcPort->remote_host != NULL)
+    {	
+		if (strcmp(MyProcPort->remote_host, "[local]") == 0){
+			subnet_name_null = true;
+		}
+		else{
+			inet *client =
+				DatumGetInetP(
+					DirectFunctionCall1(inet_in,
+						CStringGetDatum(MyProcPort->remote_host)));
+	
+			client_ip =
+				ntohl(((struct sockaddr_in *)&client->inet_data)
+					->sin_addr.s_addr);
+		}
+    }
+
+    ret = enclave_check_env(global_eid,
+                            &ret,
+                            day_of_week,
+                            current_minute,
+                            client_ip,
+                            subnet_name_null ? "" : subnet_name,
+							is_workday,
+							is_worktime,
+                            !is_workday_null,
+                            !is_worktime_null,
+                            !subnet_name_null,
+                            &result);
+
+    if (ret != SGX_SUCCESS)
+        elog(ERROR, "SGX enclave_check_env failed");
+
+    return result == 1;
 }
+
 
 bool
 evaluate_abac_rule_conditions(Oid rule_id, Oid userid, Oid resourceid){
