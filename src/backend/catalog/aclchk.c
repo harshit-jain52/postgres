@@ -50,9 +50,6 @@
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
-#include "catalog/pg_abac_env_subnet.h"
-#include "catalog/pg_abac_env_timewindow.h"
-#include "catalog/pg_abac_env_workday.h"
 #include "catalog/pg_abac_rule.h"
 #include "catalog/pg_abac_rule_priv.h"
 #include "catalog/pg_authid.h"
@@ -5362,105 +5359,6 @@ bool check_resource_attribute_existence(Oid resourceid, Oid attr_id)
     table_close(pg_res_attr_val_rel, AccessShareLock);
 
     return exists;
-}
-
-bool check_workday()
-{
-	time_t		rawtime;
-	struct tm  *timeinfo;
-	int16		day_of_week;
-	bool		is_workday;
-	HeapTuple   tuple;
-	Form_pg_abac_env_workday workday_form;
-
-	time(&rawtime);
-	timeinfo = localtime(&rawtime);
-	day_of_week = timeinfo->tm_wday; // Sunday = 0, Monday = 1, ..., Saturday = 6
-
-	tuple = SearchSysCache1(ABACENVWORKDAY, Int16GetDatum(day_of_week));  
-
-	if (!HeapTupleIsValid(tuple))  
-			elog(ERROR, "cache lookup failed for day_of_week %d", day_of_week);
-	
-	workday_form = (Form_pg_abac_env_workday) GETSTRUCT(tuple);  
-	is_workday = workday_form->is_workday;
-
-	ReleaseSysCache(tuple);
-
-	return is_workday;
-}
-
-bool check_worktime()
-{
-	time_t		rawtime;
-	struct tm  *timeinfo;
-	int			current_min;
-	bool		is_worktime;
-	HeapTuple   tuple;
-	Form_pg_abac_env_timewindow timewindow_form;
-
-	time(&rawtime);
-	timeinfo = localtime(&rawtime);
-	current_min = timeinfo->tm_hour * 60 + timeinfo->tm_min;
-
-	tuple = SearchSysCache1(ABACENVTIMEWINDOW, Int16GetDatum(1));
-	if (!HeapTupleIsValid(tuple))  
-			elog(ERROR, "cache lookup failed for timewindow");
-
-	timewindow_form = (Form_pg_abac_env_timewindow) GETSTRUCT(tuple);
-	is_worktime = (current_min >= timewindow_form->start_minute && current_min <= timewindow_form->end_minute);
-
-	ReleaseSysCache(tuple);
-
-	return is_worktime;
-}
-
-bool check_subnet(const char *subnet_name)
-{
-	HeapTuple   tuple;
-	Relation   	pg_abac_env_subnet_rel;
-    Datum       net_datum;
-    inet       *client;
-    bool        isnull;
-    char       *remote_host;
-	bool		allowed;
-
-	if (MyProcPort == NULL || MyProcPort->remote_host == NULL)
-        return false;
-
-	remote_host = MyProcPort->remote_host;
-
-	/* For local connections (Unix domain socket) */
-	if (strcmp(remote_host, "[local]") == 0)
-    	return true;
-	
-    client = DatumGetInetP(
-                DirectFunctionCall1(inet_in,
-                    CStringGetDatum(remote_host)));
-
-	tuple = SearchSysCache1(ABACENVSUBNET,
-                            CStringGetDatum(subnet_name));
-    if (!HeapTupleIsValid(tuple))
-    {
-        /* Should never happen because validated at CREATE ABAC_RULE */
-        ereport(ERROR,
-            (errmsg("environment subnet \"%s\" does not exist",
-                    subnet_name)));
-    }
-
-	pg_abac_env_subnet_rel = table_open(AbacEnvSubnetRelationId, AccessShareLock);
-	net_datum = heap_getattr(tuple,
-                             Anum_pg_abac_env_subnet_network,
-                             RelationGetDescr(pg_abac_env_subnet_rel),
-                             &isnull);
-
-    allowed = DatumGetBool(DirectFunctionCall2(network_supeq,
-								net_datum,
-								InetPGetDatum(client)));
-	
-    ReleaseSysCache(tuple);
-	table_close(pg_abac_env_subnet_rel, NoLock);
-    return allowed;
 }
 
 float get_connection_load_ratio()

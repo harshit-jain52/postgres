@@ -302,9 +302,6 @@ extern bool check_abac_env_conditions(bool is_workday, bool is_workday_null,
                           bool is_worktime, bool is_worktime_null,
                           const char *subnet_name, bool subnet_name_null,
                           float8 allowed_server_load, bool server_load_null);
-extern bool check_workday(void);
-extern bool check_worktime(void);
-extern bool check_subnet(const char *subnet_name);
 float get_connection_load_ratio(void);
 
 #endif							/* ACL_H */
