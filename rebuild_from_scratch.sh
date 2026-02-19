@@ -11,8 +11,10 @@ cd ../../
 
 ./stop_server.sh
 
-# ./configure
 make clean
+./configure
+echo "/opt/intel/sgxsdk/lib64" | sudo tee /etc/ld.so.conf.d/sgx.conf
+sudo ldconfig
 make -j 8
 sudo make install
 
