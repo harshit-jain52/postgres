@@ -5,22 +5,16 @@ PG_USER="postgres"
 clear
 
 cd src/tee
-make clean -f enclave.makefile
-make -f enclave.makefile
+make db_clean
+make 
 cd ../../
 
 ./stop_server.sh
 
 make clean
 ./configure
-echo "/opt/intel/sgxsdk/lib64" | sudo tee /etc/ld.so.conf.d/sgx.conf
-sudo ldconfig
 make -j 8
 sudo make install
-
-sudo cp src/tee/enclave.signed.so /usr/local/pgsql/lib/
-sudo chown postgres:postgres /usr/local/pgsql/lib/enclave.signed.so
-sudo chmod 755 /usr/local/pgsql/lib/enclave.signed.so
 
 sudo rm -rf "$DATA_DIR"
 sudo mkdir -p "$DATA_DIR"

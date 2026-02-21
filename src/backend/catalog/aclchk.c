@@ -92,9 +92,11 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
-#include "Enclave_u.h"
-#include "sgx_urts.h"
-extern sgx_enclave_id_t global_eid;
+#include "utils/abac_sgx_ipc.h"
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
+#include <errno.h>
 
 /*
  * Internal format used by ALTER DEFAULT PRIVILEGES.
@@ -5088,7 +5090,6 @@ check_abac_env_conditions(bool is_workday, bool is_workday_null,
     int current_minute;
     uint32_t client_ip = 0;
     int result = 1;
-    sgx_status_t ret;
 
     time(&rawtime);
     timeinfo = localtime(&rawtime);
@@ -5115,21 +5116,30 @@ check_abac_env_conditions(bool is_workday, bool is_workday_null,
 		}
     }
 
-    ret = enclave_check_env(global_eid,
-                            &ret,
-                            day_of_week,
-                            current_minute,
-                            client_ip,
-                            subnet_name_null ? "" : subnet_name,
-							is_workday,
-							is_worktime,
-                            !is_workday_null,
-                            !is_worktime_null,
-                            !subnet_name_null,
-                            &result);
+    msg_check_env msg;
+	memset(&msg, 0, sizeof(msg));
 
-    if (ret != SGX_SUCCESS)
-        elog(ERROR, "SGX enclave_check_env failed");
+	msg.day_of_week = day_of_week;
+	msg.current_minute = current_minute;
+	msg.client_ip = client_ip;
+
+	if (!subnet_name_null)
+		strncpy(msg.subnet_name, subnet_name, 63);
+
+	msg.workday_value = is_workday;
+	msg.worktime_value = is_worktime;
+
+	msg.check_workday = !is_workday_null;
+	msg.check_worktime = !is_worktime_null;
+	msg.check_subnet = !subnet_name_null;
+
+	send_request_to_sgx_service(
+		SGX_MSG_CHECK_ENV,
+		&msg,
+		sizeof(msg),
+		&result,
+		sizeof(result)
+	);
 
     return result == 1;
 }
@@ -5387,4 +5397,68 @@ float get_connection_load_ratio()
         return (float) active_connections / (float) max_connections;  
     else  
         return 0.0;
+}
+
+void
+send_request_to_sgx_service(uint32_t type,
+                            void *payload,
+                            uint32_t payload_size,
+                            void *response,
+                            uint32_t response_size)
+{
+    int sock;
+    struct sockaddr_un addr;
+    sgx_msg_hdr hdr;
+
+    sock = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (sock < 0)
+        ereport(ERROR,
+                (errmsg("SGX socket creation failed")));
+
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, SGX_SOCKET_PATH,
+            sizeof(addr.sun_path) - 1);
+
+    if (connect(sock, (struct sockaddr *)&addr,
+                sizeof(addr)) < 0)
+    {
+        close(sock);
+        ereport(ERROR,
+                (errmsg("Cannot connect to SGX service")));
+    }
+
+    hdr.type = type;
+    hdr.size = payload_size;
+
+    if (write(sock, &hdr, sizeof(hdr)) != sizeof(hdr))
+    {
+        close(sock);
+        ereport(ERROR,
+                (errmsg("SGX header send failed")));
+    }
+
+    if (payload_size > 0)
+    {
+        if (write(sock, payload, payload_size)
+            != payload_size)
+        {
+            close(sock);
+            ereport(ERROR,
+                    (errmsg("SGX payload send failed")));
+        }
+    }
+
+    if (response_size > 0)
+    {
+        if (read(sock, response, response_size)
+            != response_size)
+        {
+            close(sock);
+            ereport(ERROR,
+                    (errmsg("SGX response read failed")));
+        }
+    }
+
+    close(sock);
 }

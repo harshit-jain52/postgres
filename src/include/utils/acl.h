@@ -303,5 +303,10 @@ extern bool check_abac_env_conditions(bool is_workday, bool is_workday_null,
                           const char *subnet_name, bool subnet_name_null,
                           float8 allowed_server_load, bool server_load_null);
 float get_connection_load_ratio(void);
+void send_request_to_sgx_service(uint32_t type,
+                            void *payload,
+                            uint32_t payload_size,
+                            void *response,
+                            uint32_t response_size);
 
 #endif							/* ACL_H */

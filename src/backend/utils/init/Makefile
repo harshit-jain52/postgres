@@ -19,5 +19,3 @@ OBJS = \
 	usercontext.o
 
 include $(top_srcdir)/src/backend/common.mk
-CFLAGS += -I$(top_srcdir)/src/tee
-CFLAGS += -I/opt/intel/sgxsdk/include

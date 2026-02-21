@@ -50,57 +50,8 @@
 #include "utils/syscache.h"
 #include "utils/varlena.h"
 #include <arpa/inet.h>
+#include <utils/abac_sgx_ipc.h>
 
-#include "Enclave_u.h"
-#include "sgx_urts.h"
-extern sgx_enclave_id_t global_eid;
-#define ABAC_ENV_FILENAME "abac_env.sealed"
-
-static void
-GetAbacEnvPath(char *path, size_t len)
-{
-    snprintf(path, len, "%s/%s", DataDir, ABAC_ENV_FILENAME);
-}
-
-static void
-sgx_reseal_env(void)
-{
-    char path[MAXPGPATH];
-    uint32_t sealed_size;
-    sgx_status_t ret;
-    FILE *fp;
-
-	ret = enclave_get_sealed_size(global_eid,
-								&ret,
-								&sealed_size);
-
-	if (ret != SGX_SUCCESS)
-		ereport(ERROR,
-				(errmsg("Failed to get sealed size from enclave")));
-
-    sgx_sealed_data_t *sealed_blob = palloc(sealed_size);
-
-    ret = enclave_seal_env(global_eid,
-                           &ret,
-                           sealed_blob,
-                           sealed_size);
-
-    if (ret != SGX_SUCCESS)
-        ereport(ERROR,
-                (errmsg("Failed to seal ABAC environment")));
-
-    GetAbacEnvPath(path, sizeof(path));
-
-    fp = fopen(path, "wb");
-    if (!fp)
-        ereport(ERROR,
-                (errmsg("Could not write ABAC sealed file")));
-
-    fwrite(sealed_blob, 1, sealed_size, fp);
-    fclose(fp);
-
-    pfree(sealed_blob);
-}
 
 Oid
 CreateUserAttribute(ParseState *pstate, CreateUserAttributeStmt *stmt){
@@ -958,16 +909,16 @@ void handle_workday(SetEnvAttributeStmt *stmt)
                     (errmsg("invalid workday \"%s\"", day)));
     }
 
-    sgx_status_t ret;
-    ret = enclave_set_workday(global_eid,
-                              &ret,
-                              workday_arr);
+    msg_set_workday msg;
+	memcpy(msg.workday, workday_arr, 7);
 
-    if (ret != SGX_SUCCESS)
-        ereport(ERROR,
-                (errmsg("SGX enclave set_workday failed")));
-
-    sgx_reseal_env();
+	send_request_to_sgx_service(
+		SGX_MSG_SET_WORKDAY,
+		&msg,
+		sizeof(msg),
+		NULL,
+		0
+	);
 }
 
 void handle_timewindow(SetEnvAttributeStmt *stmt)
@@ -1013,18 +964,17 @@ void handle_timewindow(SetEnvAttributeStmt *stmt)
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                  errmsg("start time must be earlier than end time")));
 
-    sgx_status_t ret;
+    msg_set_timewindow msg;
+	msg.start_min = start_min;
+	msg.end_min   = end_min;
 
-    ret = enclave_set_timewindow(global_eid,
-                                 &ret,
-                                 start_min,
-                                 end_min);
-
-    if (ret != SGX_SUCCESS)
-        ereport(ERROR,
-                (errmsg("SGX enclave_set_timewindow failed")));
-
-    sgx_reseal_env();
+	send_request_to_sgx_service(
+		SGX_MSG_SET_TIMEWINDOW,
+		&msg,
+		sizeof(msg),
+		NULL,
+		0
+	);
 }
 
 void
@@ -1041,7 +991,6 @@ handle_subnet(SetEnvAttributeStmt *stmt)
         inet *ip;
         uint32_t network;
         uint32_t mask_bits;
-        sgx_status_t ret;
 
         if (!IsA(def->arg, String))
             ereport(ERROR,
@@ -1062,41 +1011,45 @@ handle_subnet(SetEnvAttributeStmt *stmt)
         network = ntohl(((struct sockaddr_in *) &ip->inet_data)->sin_addr.s_addr);
         mask_bits = ip_bits(ip);
 
-        ret = enclave_set_subnet(global_eid,
-                                 &ret,
-                                 subnet_name,
-                                 network,
-                                 mask_bits);
+        msg_set_subnet msg;
+		memset(&msg, 0, sizeof(msg));
 
-        if (ret != SGX_SUCCESS)
-            ereport(ERROR,
-                    (errmsg("SGX enclave_set_subnet failed")));
+		strncpy(msg.name, subnet_name, 63);
+		msg.network = network;
+		msg.mask    = mask_bits;
+
+		send_request_to_sgx_service(
+			SGX_MSG_SET_SUBNET,
+			&msg,
+			sizeof(msg),
+			NULL,
+			0
+		);
     }
-
-    sgx_reseal_env();
 }
 
 void
 check_subnet_exists(const char *subnet_name)
 {
-    sgx_status_t ret;
+    msg_subnet_exists msg;
     int exists = 0;
 
-    ret = enclave_subnet_exists(global_eid,
-                                &ret,
-                                subnet_name,
-                                &exists);
+    memset(&msg, 0, sizeof(msg));
+    strncpy(msg.name, subnet_name, 63);
 
-    if (ret != SGX_SUCCESS)
-        ereport(ERROR,
-                (errmsg("SGX enclave_subnet_exists failed")));
+    send_request_to_sgx_service(
+        SGX_MSG_SUBNET_EXISTS,
+        &msg,
+        sizeof(msg),
+        &exists,
+        sizeof(exists)
+    );
 
     if (!exists)
         ereport(ERROR,
                 (errcode(ERRCODE_UNDEFINED_OBJECT),
                  errmsg("environment subnet \"%s\" does not exist",
-                        subnet_name),
-                 errhint("Use SET ENV_ATTRIBUTE subnet to define it first.")));
+                        subnet_name)));
 }
 
 void AddRuleAttr(Oid ruleid, Oid attrid, bool is_user_attr, const char* value, bool is_null)

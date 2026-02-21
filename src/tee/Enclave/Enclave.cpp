@@ -1,6 +1,7 @@
 #include "Enclave_t.h"
 #include "sgx_tseal.h"
-#include <cstring>
+#include <string.h>
+#include <stdio.h>
 
 typedef struct _env_config_t {
     uint8_t workday[7];
@@ -35,6 +36,20 @@ sgx_status_t enclave_init_env(sgx_sealed_data_t* sealed_data,
 sgx_status_t enclave_set_workday(uint8_t* workday_arr)
 {
     memcpy(g_env_config.workday, workday_arr, 7);
+
+    char buf[256];
+    snprintf(buf, sizeof(buf),
+        "SET_WORKDAY: %d %d %d %d %d %d %d",
+        g_env_config.workday[0],
+        g_env_config.workday[1],
+        g_env_config.workday[2],
+        g_env_config.workday[3],
+        g_env_config.workday[4],
+        g_env_config.workday[5],
+        g_env_config.workday[6]);
+
+    ocall_print(buf);
+
     return SGX_SUCCESS;
 }
 
@@ -42,6 +57,14 @@ sgx_status_t enclave_set_timewindow(int start_min, int end_min)
 {
     g_env_config.start_minute = start_min;
     g_env_config.end_minute   = end_min;
+
+    char buf[128];
+    snprintf(buf, sizeof(buf),
+        "SET_TIMEWINDOW: %d -> %d",
+        start_min, end_min);
+
+    ocall_print(buf);
+
     return SGX_SUCCESS;
 }
 
@@ -57,6 +80,13 @@ sgx_status_t enclave_set_subnet(const char* name,
     strncpy(g_env_config.subnets[idx].name, name, 63);
     g_env_config.subnets[idx].network = network;
     g_env_config.subnets[idx].mask = mask;
+
+    char buf[256];
+    snprintf(buf, sizeof(buf),
+        "SET_SUBNET: name=%s network=%u mask=%u (total=%d)",
+        name, network, mask, g_env_config.subnet_count);
+
+    ocall_print(buf);
 
     return SGX_SUCCESS;
 }
@@ -199,5 +229,45 @@ sgx_status_t enclave_debug_get_timewindow(int* start_min,
 sgx_status_t enclave_debug_get_subnet_count(int* count)
 {
     *count = g_env_config.subnet_count;
+    return SGX_SUCCESS;
+}
+
+sgx_status_t enclave_debug_dump_env()
+{
+    char buf[256];
+
+    snprintf(buf, sizeof(buf),
+        "Workdays: %d %d %d %d %d %d %d",
+        g_env_config.workday[0],
+        g_env_config.workday[1],
+        g_env_config.workday[2],
+        g_env_config.workday[3],
+        g_env_config.workday[4],
+        g_env_config.workday[5],
+        g_env_config.workday[6]);
+
+    ocall_print(buf);
+
+    snprintf(buf, sizeof(buf),
+        "Timewindow: %d -> %d",
+        g_env_config.start_minute,
+        g_env_config.end_minute);
+
+    ocall_print(buf);
+
+    snprintf(buf, sizeof(buf), "Subnets: %d", g_env_config.subnet_count);
+    ocall_print(buf);
+
+    for (int i = 0; i < g_env_config.subnet_count; i++)
+    {
+        snprintf(buf, sizeof(buf),
+            "  [%d] name=%s network=%u mask=%u",
+            i,
+            g_env_config.subnets[i].name,
+            g_env_config.subnets[i].network,
+            g_env_config.subnets[i].mask);
+        ocall_print(buf);
+    }
+
     return SGX_SUCCESS;
 }

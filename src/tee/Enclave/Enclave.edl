@@ -69,6 +69,8 @@ enclave {
             [out] int* count
         );
 
+        public sgx_status_t enclave_debug_dump_env();
+
     };
 
     untrusted {

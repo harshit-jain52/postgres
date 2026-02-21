@@ -49,8 +49,6 @@ OBJS = \
 	toasting.o
 
 include $(top_srcdir)/src/backend/common.mk
-CFLAGS += -I$(top_srcdir)/src/tee
-CFLAGS += -I/opt/intel/sgxsdk/include
 
 .PHONY: install-data
 install-data: installdirs

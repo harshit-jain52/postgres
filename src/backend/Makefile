@@ -21,8 +21,7 @@ SUBDIRS = access archive backup bootstrap catalog parser commands executor \
 	main nodes optimizer partitioning port postmaster \
 	regex replication rewrite \
 	statistics storage tcop tsearch utils $(top_builddir)/src/timezone \
-	jit \
-	$(top_builddir)/src/tee
+	jit
 
 include $(srcdir)/common.mk
 
@@ -95,9 +94,6 @@ libpostgres.a: postgres
 	touch $@
 
 endif # win32
-
-LIBS += -L/opt/intel/sgxsdk/lib64
-LIBS += -lsgx_urts_sim -lsgx_launch_sim -lpthread
 
 $(top_builddir)/src/port/libpgport_srv.a: | submake-libpgport
 
