@@ -1,6 +1,4 @@
 Enclave/Enclave_private.pem
-Enclave/Enclave.config.xml
-Enclave/Enclave.lds
 Enclave_t.*
 Enclave_u.*
 sealed_env.bin

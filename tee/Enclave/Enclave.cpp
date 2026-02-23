@@ -212,26 +212,6 @@ sgx_status_t enclave_check_env(int day_of_week,
     return SGX_SUCCESS;
 }
 
-sgx_status_t enclave_debug_get_workday(uint8_t* arr)
-{
-    memcpy(arr, g_env_config.workday, 7);
-    return SGX_SUCCESS;
-}
-
-sgx_status_t enclave_debug_get_timewindow(int* start_min,
-                                          int* end_min)
-{
-    *start_min = g_env_config.start_minute;
-    *end_min   = g_env_config.end_minute;
-    return SGX_SUCCESS;
-}
-
-sgx_status_t enclave_debug_get_subnet_count(int* count)
-{
-    *count = g_env_config.subnet_count;
-    return SGX_SUCCESS;
-}
-
 sgx_status_t enclave_debug_dump_env()
 {
     char buf[256];

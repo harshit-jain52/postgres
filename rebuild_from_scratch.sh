@@ -4,10 +4,10 @@ PG_USER="postgres"
 
 clear
 
-cd src/tee
+cd tee
 make db_clean
 make 
-cd ../../
+cd ..
 
 ./stop_server.sh
 

@@ -56,19 +56,6 @@ enclave {
             [out] int* result
         );
 
-        public sgx_status_t enclave_debug_get_workday(
-            [out, size=7] uint8_t* arr
-        );
-
-        public sgx_status_t enclave_debug_get_timewindow(
-            [out] int* start_min,
-            [out] int* end_min
-        );
-
-        public sgx_status_t enclave_debug_get_subnet_count(
-            [out] int* count
-        );
-
         public sgx_status_t enclave_debug_dump_env();
 
     };

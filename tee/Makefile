@@ -75,15 +75,6 @@ Enclave/Enclave_private.pem:
 	openssl genrsa -out Enclave/Enclave_private.pem -3 3072
 
 
-
-Enclave/Enclave.config.xml:
-	echo '<EnclaveConfiguration><ProdID>0</ProdID>
-	<ISVSVN>0</ISVSVN>
-	<StackMaxSize>0x40000</StackMaxSize>
-	<HeapMaxSize>0x100000</HeapMaxSize>
-	</EnclaveConfiguration>' > Enclave/Enclave.config.xml
-
-
 clean:
 	rm -f sgx_service enclave.so enclave.signed.so *.o *_u.* *_t.*
 
