@@ -72,18 +72,40 @@ sgx_status_t enclave_set_subnet(const char* name,
                                 uint32_t network,
                                 uint32_t mask)
 {
+    // Check if subnet with same name already exists
+    for (int i = 0; i < g_env_config.subnet_count; i++)
+    {
+        if (strncmp(g_env_config.subnets[i].name, name, 64) == 0)
+        {
+            // Update existing entry
+            g_env_config.subnets[i].network = network;
+            g_env_config.subnets[i].mask = mask;
+
+            char buf[256];
+            snprintf(buf, sizeof(buf),
+                "UPDATE_SUBNET: name=%s network=%u mask=%u",
+                name, network, mask);
+
+            ocall_print(buf);
+
+            return SGX_SUCCESS;
+        }
+    }
+
+    // If not found, insert new subnet
     if (g_env_config.subnet_count >= 32)
         return SGX_ERROR_OUT_OF_MEMORY;
 
     int idx = g_env_config.subnet_count++;
 
     strncpy(g_env_config.subnets[idx].name, name, 63);
+    g_env_config.subnets[idx].name[63] = '\0';  // ensure null-termination
     g_env_config.subnets[idx].network = network;
     g_env_config.subnets[idx].mask = mask;
 
     char buf[256];
     snprintf(buf, sizeof(buf),
-        "SET_SUBNET: name=%s network=%u mask=%u (total=%d)",
+        "ADD_SUBNET: name=%s network=%u mask=%u (total=%d)",
         name, network, mask, g_env_config.subnet_count);
 
     ocall_print(buf);

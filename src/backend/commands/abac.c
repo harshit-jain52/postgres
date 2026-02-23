@@ -1008,7 +1008,7 @@ handle_subnet(SetEnvAttributeStmt *stmt)
 			ereport(ERROR,
 					(errmsg("only IPv4 subnets supported")));
 
-        network = ntohl(((struct sockaddr_in *) &ip->inet_data)->sin_addr.s_addr);
+        network = ntohl(*((uint32_t *) ip_addr(ip)));
         mask_bits = ip_bits(ip);
 
         msg_set_subnet msg;
