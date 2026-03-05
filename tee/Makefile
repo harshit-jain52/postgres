@@ -24,9 +24,13 @@ Enclave_Cpp_Files := Enclave/Enclave.cpp
 all: sgx_service enclave.signed.so
 
 # App Compilation
-sgx_service: Enclave_u.o $(App_Cpp_Files)
+sgx_service: Enclave_u.o $(App_Cpp_Files) setup-group
 	g++ -o sgx_service Enclave_u.o $(App_Cpp_Files) -I. -I$(SGX_SDK)/include $(App_Link_Flags)
 
+setup-group:
+	- sudo groupadd sgxabac
+	- sudo usermod -aG sgxabac postgres
+	- sudo usermod -aG sgxabac $(USER)
 
 Enclave_u.o: Enclave_u.c
 	g++ -c Enclave_u.c -I$(SGX_SDK)/include

@@ -6,6 +6,9 @@
 #include <sys/un.h>
 #include <errno.h>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <pwd.h>
+#include <grp.h>
 
 #include "sgx_urts.h"
 #include "Enclave_u.h"
@@ -178,8 +181,19 @@ int main()
 
     if (bind(server_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0)
         fatal("bind");
-    chmod(SOCKET_PATH, 0666);
+    
+    struct group *grp = getgrnam("sgxabac");
 
+    if (!grp) {
+        fatal("getgrnam");
+    }
+
+    if (chmod(SOCKET_PATH, 0660) != 0)
+        perror("chmod");
+
+    if (chown(SOCKET_PATH, -1, grp->gr_gid) != 0)
+        perror("chown");
+        
     if (listen(server_fd, 10) < 0)
         fatal("listen");
 
@@ -190,6 +204,22 @@ int main()
         int client = accept(server_fd, NULL, NULL);
         if (client < 0)
             continue;
+
+        struct ucred cred;
+        socklen_t len = sizeof(cred);
+
+        if (getsockopt(client, SOL_SOCKET, SO_PEERCRED, &cred, &len) == -1){
+            perror("getsockopt");
+            close(client);
+            continue;
+        }
+
+        if (cred.uid != getpwnam("postgres")->pw_uid)
+        {
+            printf("Unauthorized client uid=%d\n", cred.uid);
+            close(client);
+            continue;
+        }
 
         sgx_msg_hdr hdr;
         if (read(client, &hdr, sizeof(hdr)) != sizeof(hdr))
