@@ -214,6 +214,8 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_SetEnvAttributeStmt:
 		case T_CreateAbacRuleStmt:
 		case T_DropAbacRuleStmt:
+		case T_GrantAbacAdminStmt:
+		case T_RevokeAbacAdminStmt:
 		case T_ImportForeignSchemaStmt:
 		case T_IndexStmt:
 		case T_ReassignOwnedStmt:
@@ -979,6 +981,14 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 		
 		case T_DropAbacRuleStmt:
 			DropAbacRule(pstate, (DropAbacRuleStmt *) parsetree);
+			break;
+
+		case T_GrantAbacAdminStmt:
+			GrantAbacAdmin(pstate, (GrantAbacAdminStmt *) parsetree);
+			break;
+
+		case T_RevokeAbacAdminStmt:
+			RevokeAbacAdmin(pstate, (RevokeAbacAdminStmt *) parsetree);
 			break;
 
 		case T_ReassignOwnedStmt:
@@ -3070,6 +3080,14 @@ CreateCommandTag(Node *parsetree)
 		case T_DropAbacRuleStmt:
 			tag = CMDTAG_DROP_ABAC_RULE;
 			break;
+		
+		case T_GrantAbacAdminStmt:
+			tag = CMDTAG_GRANT_ABAC_ADMIN;
+			break;
+		
+		case T_RevokeAbacAdminStmt:
+			tag = CMDTAG_REVOKE_ABAC_ADMIN;
+			break;
 
 		case T_DropOwnedStmt:
 			tag = CMDTAG_DROP_OWNED;
@@ -3735,7 +3753,15 @@ GetCommandLogLevel(Node *parsetree)
 		case T_DropAbacRuleStmt:
 			lev = LOGSTMT_DDL;
 			break;
-
+		
+		case T_GrantAbacAdminStmt:
+			lev = LOGSTMT_DDL;
+			break;
+		
+		case T_RevokeAbacAdminStmt:
+			lev = LOGSTMT_DDL;
+			break;
+		
 		case T_DropOwnedStmt:
 			lev = LOGSTMT_DDL;
 			break;

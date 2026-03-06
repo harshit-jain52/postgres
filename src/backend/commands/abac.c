@@ -63,13 +63,10 @@ CreateUserAttribute(ParseState *pstate, CreateUserAttributeStmt *stmt){
 	Oid			attrib_id;
 	Oid			currentUserId = GetUserId();
 
-	/*
-	 * Creator must be a superuser
-	 */
-	if (!superuser_arg(currentUserId))
+	if (!superuser_arg(currentUserId) && !sgx_check_admin_priv(currentUserId, ABAC_ADMIN_CREATE_UA))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser to create user attribute")));
+				 errmsg("must be superuser or have admin privileges to create user attribute")));
 
 	/*
 	 * Check that the user is not trying to create an attribute in the reserved
@@ -137,13 +134,10 @@ CreateResourceAttribute(ParseState *pstate, CreateResourceAttributeStmt *stmt){
 	Oid			attrib_id;
 	Oid			currentUserId = GetUserId();
 
-	/*
-	 * Creator must be a superuser
-	 */
-	if (!superuser_arg(currentUserId))
+	if (!superuser_arg(currentUserId) && !sgx_check_admin_priv(currentUserId, ABAC_ADMIN_CREATE_RA))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser to create resource attribute")));
+				 errmsg("must be superuser or have admin privileges to create resource attribute")));
 
 	/*
 	 * Check that the user is not trying to create an attribute in the reserved
@@ -215,11 +209,10 @@ DropUserAttribute(ParseState *pstate, DropUserAttributeStmt *stmt)
     Oid         currentUserId = GetUserId();  
     bool        attr_in_use = false;  
   
-    /* Only superusers can drop user attributes */  
-    if (!superuser_arg(currentUserId))  
+    if (!superuser_arg(currentUserId) && !sgx_check_admin_priv(currentUserId, ABAC_ADMIN_DROP_UA))  
         ereport(ERROR,  
                 (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),  
-                 errmsg("must be superuser to drop user attribute")));  
+                 errmsg("must be superuser or have admin privileges to drop user attribute")));  
   
     attr_oid = get_user_attr_oid(stmt->attribute, stmt->missing_ok);
 	
@@ -303,11 +296,10 @@ void DropResourceAttribute(ParseState *pstate, DropResourceAttributeStmt *stmt){
     Oid         currentUserId = GetUserId();  
     bool        attr_in_use = false;  
   
-    /* Only superusers can drop resource attributes */  
-    if (!superuser_arg(currentUserId))  
+    if (!superuser_arg(currentUserId) && !sgx_check_admin_priv(currentUserId, ABAC_ADMIN_DROP_RA))  
         ereport(ERROR,  
                 (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),  
-                 errmsg("must be superuser to drop resource attribute")));  
+                 errmsg("must be superuser or have admin privileges to drop resource attribute")));  
   
     attr_oid = get_resource_attr_oid(stmt->attribute, stmt->missing_ok);
 	
@@ -503,6 +495,11 @@ void GrantUserAttribute(ParseState *pstate, GrantUserAttributeStmt *stmt){
 	HeapTuple   tuple;  
 	Form_pg_authid authform;
 
+	if (!superuser_arg(currentUserId) && !sgx_check_admin_priv(currentUserId, ABAC_ADMIN_GRANT_UA))
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("must be superuser or have admin privileges to grant user attribute")));
+
 	pg_authid_rel = table_open(AuthIdRelationId, AccessShareLock);
 	pg_user_attr_rel = table_open(UserAttrRelationId, AccessShareLock);
 
@@ -533,15 +530,6 @@ void GrantUserAttribute(ParseState *pstate, GrantUserAttributeStmt *stmt){
 					errdetail("Only roles with LOGIN privilege can receive user attributes.")));  
 		}
 		ReleaseSysCache(tuple);
-
-		/*
-		* Grantor must be a superuser or the role admin
-		*/
-		if (!superuser_arg(currentUserId) && !is_admin_of_role(currentUserId, roleid))
-			ereport(ERROR,
-					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 errmsg("must be superuser or role admin to grant attribute to role \"%s\"",
-							rolename)));
 		
 		attrid = get_user_attr_oid(stmt->attribute, false);
 		AddRoleUserAttr(roleid, attrid, stmt->value);
@@ -560,6 +548,11 @@ void GrantResourceAttribute(ParseState *pstate, GrantResourceAttributeStmt *stmt
     ListCell   *item;
     Oid         currentUserId = GetUserId();
 
+	if (!superuser_arg(currentUserId) && !sgx_check_admin_priv(currentUserId, ABAC_ADMIN_GRANT_RA))
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("must be superuser or have admin privileges to grant resource attribute")));
+
     pg_class_rel = table_open(RelationRelationId, AccessShareLock);
     pg_resource_attr_rel = table_open(ResourceAttrRelationId, AccessShareLock);
 
@@ -576,16 +569,6 @@ void GrantResourceAttribute(ParseState *pstate, GrantResourceAttributeStmt *stmt
             {
                 RangeVar   *relvar = (RangeVar *) lfirst(item);
                 resource_id = RangeVarGetRelid(relvar, NoLock, false);
-                  
-                /*  
-                 * Grantor must be a superuser or the resource owner  
-                 */
-                if(!superuser_arg(currentUserId) &&
-                   !object_ownercheck(RelationRelationId, resource_id, currentUserId))
-                    ereport(ERROR,
-                            (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-                             errmsg("must be superuser or resource owner to grant attribute to relation \"%s\"",
-                                 relvar->relname)));
                 break;
             }  
             case OBJECT_FUNCTION:
@@ -600,14 +583,6 @@ void GrantResourceAttribute(ParseState *pstate, GrantResourceAttributeStmt *stmt
 											false);
 
 				resource_id = address.objectId;
-
-				if (!superuser_arg(currentUserId) &&
-					!object_ownercheck(ProcedureRelationId,
-									resource_id,
-									currentUserId))
-					ereport(ERROR,
-							(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-							errmsg("must be superuser or function owner to grant attribute to function")));
 				break;
 			}
             default:
@@ -748,6 +723,11 @@ void RevokeUserAttribute(ParseState *pstate, RevokeUserAttributeStmt *stmt){
 	ListCell   *item;
 	Oid			currentUserId = GetUserId();
 
+	if (!superuser_arg(currentUserId) && !sgx_check_admin_priv(currentUserId, ABAC_ADMIN_REVOKE_UA))
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("must be superuser or have admin privileges to revoke user attribute")));
+	
 	pg_authid_rel = table_open(AuthIdRelationId, AccessShareLock);
 	pg_user_attr_rel = table_open(UserAttrRelationId, AccessShareLock);
 
@@ -759,15 +739,6 @@ void RevokeUserAttribute(ParseState *pstate, RevokeUserAttributeStmt *stmt){
 		Oid			attrid;
 
 		roleid = get_role_oid(rolename, false);
-		/*
-		* Revoker must be a superuser or the role admin
-		*/
-		if (!superuser_arg(currentUserId) && !is_admin_of_role(currentUserId, roleid))
-			ereport(ERROR,
-					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 errmsg("must be superuser or role admin to revoke attribute from role \"%s\"",
-							rolename)));
-		
 		attrid = get_user_attr_oid(stmt->attribute, false);
 		DelRoleUserAttr(roleid, attrid, stmt->value, stmt->attribute, rolename);
 	}
@@ -785,6 +756,11 @@ void RevokeResourceAttribute(ParseState *pstate, RevokeResourceAttributeStmt *st
     ListCell   *item;
     Oid         currentUserId = GetUserId();
 
+	if (!superuser_arg(currentUserId) && !sgx_check_admin_priv(currentUserId, ABAC_ADMIN_REVOKE_RA))
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("must be superuser or have admin privileges to revoke resource attribute")));
+	
     pg_class_rel = table_open(RelationRelationId, AccessShareLock);
     pg_resource_attr_rel = table_open(ResourceAttrRelationId, AccessShareLock);
 
@@ -801,16 +777,6 @@ void RevokeResourceAttribute(ParseState *pstate, RevokeResourceAttributeStmt *st
             {
                 RangeVar   *relvar = (RangeVar *) lfirst(item);
                 resource_id = RangeVarGetRelid(relvar, NoLock, false);
-                  
-                /*  
-                 * Revoker must be a superuser or the resource owner  
-                 */
-                if(!superuser_arg(currentUserId) &&
-                   !object_ownercheck(RelationRelationId, resource_id, currentUserId))
-                    ereport(ERROR,
-                            (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-                             errmsg("must be superuser or resource owner to revoke attribute from relation \"%s\"",
-                                 relvar->relname)));
                 break;
             }  
             case OBJECT_FUNCTION:
@@ -825,14 +791,6 @@ void RevokeResourceAttribute(ParseState *pstate, RevokeResourceAttributeStmt *st
 											false);
 
 				resource_id = address.objectId;
-
-				if (!superuser_arg(currentUserId) &&
-					!object_ownercheck(ProcedureRelationId,
-									resource_id,
-									currentUserId))
-					ereport(ERROR,
-							(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-							errmsg("must be superuser or function owner to revoke attribute from function")));
 				break;
 			}
             default:
@@ -853,11 +811,11 @@ void RevokeResourceAttribute(ParseState *pstate, RevokeResourceAttributeStmt *st
 void SetEnvAttribute(ParseState *pstate, SetEnvAttributeStmt *stmt){
 	Oid			currentUserId = GetUserId();
 
-	if(!superuser_arg(currentUserId))
+	if (!superuser_arg(currentUserId) && !sgx_check_admin_priv(currentUserId, ABAC_ADMIN_CREATE_UA))
 		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser to set environment attribute")));
-
+			(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+			errmsg("must be superuser or have admin privileges to set environment attribute")));
+	
 	if(strcmp(stmt->attribute, "workday") == 0)
 		handle_workday(stmt);
 	else if(strcmp(stmt->attribute, "timewindow") == 0)
@@ -1159,11 +1117,10 @@ CreateAbacRule(ParseState *pstate, CreateAbacRuleStmt *stmt)
 	AccessPriv *access_priv;
 	Oid			currentUserId = GetUserId();
 
-	/* Only superusers can create ABAC rules */
-	if (!superuser_arg(currentUserId))
+	if (!superuser_arg(currentUserId) && !sgx_check_admin_priv(currentUserId, ABAC_ADMIN_CREATE_RULE))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser to create ABAC rule")));
+				 errmsg("must be superuser or have admin privileges to create ABAC rule")));
 
 	pg_abac_rule_priv_rel = table_open(AbacRulePrivRelationId, RowExclusiveLock);
 	pg_abac_rule_priv_dsc = RelationGetDescr(pg_abac_rule_priv_rel);
@@ -1308,11 +1265,10 @@ void DropAbacRule(ParseState *pstate, DropAbacRuleStmt *stmt){
     Oid         rule_priv_oid;
     Oid         currentUserId = GetUserId();
   
-    /* Only superusers can drop ABAC rules */
-    if (!superuser_arg(currentUserId))
+    if (!superuser_arg(currentUserId) && !sgx_check_admin_priv(currentUserId, ABAC_ADMIN_DROP_RULE))
         ereport(ERROR,
                 (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-                 errmsg("must be superuser to drop ABAC rule")));
+                 errmsg("must be superuser or have admin privileges to drop ABAC rule")));
 
     rule_priv_oid = get_abac_rule_oid(stmt->rule_name, stmt->missing_ok);
 
@@ -1358,4 +1314,143 @@ void DropAbacRule(ParseState *pstate, DropAbacRuleStmt *stmt){
   
     /* Advance command counter to make changes visible */
     CommandCounterIncrement();
+}
+
+void GrantAbacAdmin(ParseState *pstate, GrantAbacAdminStmt *stmt){
+	Oid currentUserId = GetUserId();
+    uint32 priv_mask = 0;
+    ListCell *lc;
+	Oid role_oid;
+    
+	/* Only superuser can grant admin privileges */
+    if (!superuser_arg(currentUserId))
+        ereport(ERROR,
+            (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+             errmsg("must be superuser to grant ABAC admin privileges")));
+
+    foreach(lc, stmt->operations)
+    {
+        char *priv = (char *) lfirst(lc);
+        priv_mask |= string_to_abac_admin_priv(priv);
+    }
+	
+	role_oid = get_rolespec_oid(stmt->role, false);
+
+	/* Send to SGX enclave */
+	msg_admin_priv req;
+    req.role_oid = role_oid;
+    req.priv_mask = priv_mask;
+
+	send_request_to_sgx_service(
+		SGX_MSG_GRANT_ADMIN_PRIV,
+		&req,
+		sizeof(req),
+		NULL,
+		0
+	);
+
+	ereport(NOTICE,
+		(errmsg("granted ABAC admin privileges to role \"%s\"", stmt->role->rolename)));
+}
+
+void RevokeAbacAdmin(ParseState *pstate, RevokeAbacAdminStmt *stmt){
+	Oid currentUserId = GetUserId();
+	uint32 priv_mask = 0;
+	ListCell *lc;
+	Oid role_oid;
+	
+	/* Only superuser can revoke admin privileges */
+	if (!superuser_arg(currentUserId))
+		ereport(ERROR,
+			(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+			 errmsg("must be superuser to revoke ABAC admin privileges")));
+
+	foreach(lc, stmt->operations)
+	{
+		char *priv = (char *) lfirst(lc);
+		priv_mask |= string_to_abac_admin_priv(priv);
+	}
+	
+	role_oid = get_rolespec_oid(stmt->role, false);
+
+	/* Send to SGX enclave */
+	msg_admin_priv req;
+	req.role_oid = role_oid;
+	req.priv_mask = priv_mask;
+
+	send_request_to_sgx_service(
+		SGX_MSG_REVOKE_ADMIN_PRIV,
+		&req,
+		sizeof(req),
+		NULL,
+		0
+	);
+
+	ereport(NOTICE,
+		(errmsg("revoked ABAC admin privileges from role \"%s\"", stmt->role->rolename)));
+}
+
+uint32
+string_to_abac_admin_priv(const char *priv)
+{
+    if (pg_strcasecmp(priv, "CREATE_UA_ADMIN") == 0)
+        return ABAC_ADMIN_CREATE_UA;
+
+    if (pg_strcasecmp(priv, "DROP_UA_ADMIN") == 0)
+        return ABAC_ADMIN_DROP_UA;
+
+    if (pg_strcasecmp(priv, "GRANT_UA_ADMIN") == 0)
+        return ABAC_ADMIN_GRANT_UA;
+
+    if (pg_strcasecmp(priv, "REVOKE_UA_ADMIN") == 0)
+        return ABAC_ADMIN_REVOKE_UA;
+
+    if (pg_strcasecmp(priv, "CREATE_RA_ADMIN") == 0)
+        return ABAC_ADMIN_CREATE_RA;
+
+    if (pg_strcasecmp(priv, "DROP_RA_ADMIN") == 0)
+        return ABAC_ADMIN_DROP_RA;
+
+    if (pg_strcasecmp(priv, "GRANT_RA_ADMIN") == 0)
+        return ABAC_ADMIN_GRANT_RA;
+
+    if (pg_strcasecmp(priv, "REVOKE_RA_ADMIN") == 0)
+        return ABAC_ADMIN_REVOKE_RA;
+
+    if (pg_strcasecmp(priv, "CREATE_RULE_ADMIN") == 0)
+        return ABAC_ADMIN_CREATE_RULE;
+
+    if (pg_strcasecmp(priv, "DROP_RULE_ADMIN") == 0)
+        return ABAC_ADMIN_DROP_RULE;
+
+    if (pg_strcasecmp(priv, "SET_EA_ADMIN") == 0)
+        return ABAC_ADMIN_SET_EA;
+
+    ereport(ERROR,
+        (errcode(ERRCODE_SYNTAX_ERROR),
+         errmsg("unrecognized ABAC admin privilege \"%s\"", priv)));
+
+    return 0;
+}
+
+bool
+sgx_check_admin_priv(Oid role_oid, uint32 priv_mask)
+{
+    msg_admin_priv msg;
+    int has_priv = 0;
+
+    memset(&msg, 0, sizeof(msg));
+
+    msg.role_oid = role_oid;
+    msg.priv_mask = priv_mask;
+
+    send_request_to_sgx_service(
+        SGX_MSG_CHECK_ADMIN_PRIV,
+        &msg,
+        sizeof(msg),
+        &has_priv,
+        sizeof(has_priv)
+    );
+
+    return has_priv != 0;
 }

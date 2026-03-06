@@ -4,11 +4,6 @@ PG_USER="postgres"
 
 clear
 
-cd tee
-make db_clean
-make 
-cd ..
-
 ./stop_server.sh
 
 make clean

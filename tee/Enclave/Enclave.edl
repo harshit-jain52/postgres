@@ -55,7 +55,23 @@ enclave {
             int check_subnet,
             [out] int* result
         );
+        
+        public sgx_status_t enclave_grant_admin_priv(
+            uint32_t role_oid,
+            uint32_t priv_mask
+        );
 
+        public sgx_status_t enclave_revoke_admin_priv(
+            uint32_t role_oid,
+            uint32_t priv_mask
+        );
+
+        public sgx_status_t enclave_check_admin_priv(
+            uint32_t role_oid,
+            uint32_t priv_mask,
+            [out] int* has_priv
+        );
+        
         public sgx_status_t enclave_debug_dump_env();
 
     };

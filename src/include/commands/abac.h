@@ -44,4 +44,28 @@ extern void DropAbacRule(ParseState *pstate, DropAbacRuleStmt *stmt);
 
 AclMode string_to_privilege(const char *privname);
 
+typedef enum AbacAdminPriv
+{
+    ABAC_ADMIN_NONE              = 0,
+    ABAC_ADMIN_CREATE_UA         = 1 << 0,
+    ABAC_ADMIN_DROP_UA           = 1 << 1,
+    ABAC_ADMIN_GRANT_UA          = 1 << 2,
+    ABAC_ADMIN_REVOKE_UA         = 1 << 3,
+
+    ABAC_ADMIN_CREATE_RA         = 1 << 4,
+    ABAC_ADMIN_DROP_RA           = 1 << 5,
+    ABAC_ADMIN_GRANT_RA          = 1 << 6,
+    ABAC_ADMIN_REVOKE_RA         = 1 << 7,
+
+    ABAC_ADMIN_CREATE_RULE       = 1 << 8,
+    ABAC_ADMIN_DROP_RULE         = 1 << 9,
+
+    ABAC_ADMIN_SET_EA            = 1 << 10
+} AbacAdminPriv;
+void GrantAbacAdmin(ParseState *pstate, GrantAbacAdminStmt *stmt);
+void RevokeAbacAdmin(ParseState *pstate, RevokeAbacAdminStmt *stmt);
+uint32 string_to_abac_admin_priv(const char *priv);
+bool sgx_check_admin_priv(Oid role_oid, uint32 priv_mask);
+
+
 #endif							/* ABAC_H */

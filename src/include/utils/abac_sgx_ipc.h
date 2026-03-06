@@ -17,6 +17,9 @@ enum {
     SGX_MSG_SUBNET_EXISTS,
     SGX_MSG_CHECK_ENV,
     SGX_MSG_DEBUG_DUMP,
+    SGX_MSG_GRANT_ADMIN_PRIV,
+    SGX_MSG_REVOKE_ADMIN_PRIV,
+    SGX_MSG_CHECK_ADMIN_PRIV,
     SGX_MSG_SHUTDOWN
 };
 
@@ -52,5 +55,10 @@ typedef struct {
     int check_worktime;
     int check_subnet;
 } msg_check_env;
+
+typedef struct {
+    uint32_t role_oid;
+    uint32_t priv_mask;
+} msg_admin_priv;
 
 #endif /* ABAC_SGX_IPC_H */

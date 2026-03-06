@@ -3317,6 +3317,20 @@ typedef struct AttributeTriplet
     bool        is_null;  
 } AttributeTriplet;
 
+typedef struct GrantAbacAdminStmt
+{
+    NodeTag type;
+    List *operations;
+    RoleSpec *role;
+} GrantAbacAdminStmt;
+
+typedef struct RevokeAbacAdminStmt
+{
+    NodeTag type;
+    List *operations;
+    RoleSpec *role;
+} RevokeAbacAdminStmt;
+
 /* ----------------------
  *		{Create|Alter} SEQUENCE Statement
  * ----------------------

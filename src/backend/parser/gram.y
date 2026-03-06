@@ -312,7 +312,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 		CreateUserAttributeStmt CreateResourceAttributeStmt DropUserAttributeStmt DropResourceAttributeStmt
 		GrantUserAttributeStmt GrantResourceAttributeStmt RevokeUserAttributeStmt RevokeResourceAttributeStmt
 		SetEnvAttributeStmt
-		CreateAbacRuleStmt DropAbacRuleStmt
+		CreateAbacRuleStmt DropAbacRuleStmt GrantAbacAdminStmt RevokeAbacAdminStmt
 
 %type <node>	select_no_parens select_with_parens select_clause
 				simple_select values_clause
@@ -680,6 +680,9 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <list> attribute_pair_list attribute_triplet_list user_attribute_clause resource_attribute_clause user_attribute_clause_opt resource_attribute_clause_opt attribute_clause env_attribute_clause env_attr_list subnet_kv_list
 %type <objtype> relation_type
 %type <node> attribute_value attribute_triplet
+%type <list> abac_admin_op_list
+%type <str> abac_admin_op
+
 /*
  * Non-keyword token types.  These are hard-wired into the "flex" lexer.
  * They must be listed first so that their numeric codes do not depend on
@@ -707,7 +710,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 /* ordinary key words in alphabetical order */
 %token <keyword> ABORT_P ABSENT ABSOLUTE_P ACCESS ACTION ADD_P ADMIN AFTER
 	AGGREGATE ALL ALSO ALTER ALWAYS ANALYSE ANALYZE AND ANY ARRAY AS ASC
-	ASENSITIVE ASSERTION ASSIGNMENT ASYMMETRIC ATOMIC AT ATTACH ATTRIBUTE AUTHORIZATION ABAC_RULE
+	ASENSITIVE ASSERTION ASSIGNMENT ASYMMETRIC ATOMIC AT ATTACH ATTRIBUTE AUTHORIZATION ABAC_RULE ABAC_ADMIN
 
 	BACKWARD BEFORE BEGIN_P BETWEEN BIGINT BINARY BIT
 	BOOLEAN_P BOTH BREADTH BY
@@ -720,11 +723,13 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	COST CREATE CROSS CSV CUBE CURRENT_P
 	CURRENT_CATALOG CURRENT_DATE CURRENT_ROLE CURRENT_SCHEMA
 	CURRENT_TIME CURRENT_TIMESTAMP CURRENT_USER CURSOR CYCLE
+	CREATE_UA_ADMIN CREATE_RA_ADMIN CREATE_RULE_ADMIN
 
 	DATA_P DATABASE DAY_P DEALLOCATE DEC DECIMAL_P DECLARE DEFAULT DEFAULTS
 	DEFERRABLE DEFERRED DEFINER DELETE_P DELIMITER DELIMITERS DEPENDS DEPTH DESC
 	DETACH DICTIONARY DISABLE_P DISCARD DISTINCT DO DOCUMENT_P DOMAIN_P
 	DOUBLE_P DROP
+	DROP_UA_ADMIN DROP_RA_ADMIN DROP_RULE_ADMIN
 
 	EACH ELSE EMPTY_P ENABLE_P ENCODING ENCRYPTED END_P ENFORCED ENUM_P ERROR_P
 	ESCAPE EVENT EXCEPT EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN
@@ -734,6 +739,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	FORCE FOREIGN FORMAT FORWARD FREEZE FROM FULL FUNCTION FUNCTIONS
 
 	GENERATED GLOBAL GRANT GRANTED GREATEST GROUP_P GROUPING GROUPS
+	GRANT_UA_ADMIN GRANT_RA_ADMIN
 
 	HANDLER HAVING HEADER_P HOLD HOUR_P
 
@@ -774,6 +780,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	REFRESH REINDEX RELATIVE_P RELEASE RENAME REPEATABLE REPLACE REPLICA
 	RESET RESTART RESTRICT RETURN RETURNING RETURNS REVOKE RIGHT ROLE ROLLBACK ROLLUP
 	ROUTINE ROUTINES ROW ROWS RULE RESOURCE_ATTRIBUTE
+	REVOKE_UA_ADMIN REVOKE_RA_ADMIN
 
 	SAVEPOINT SCALAR SCHEMA SCHEMAS SCROLL SEARCH SECOND_P SECURITY SELECT
 	SEQUENCE SEQUENCES
@@ -781,6 +788,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	SIMILAR SIMPLE SKIP SMALLINT SNAPSHOT SOME SOURCE SQL_P STABLE STANDALONE_P
 	START STATEMENT STATISTICS STDIN STDOUT STORAGE STORED STRICT_P STRING_P STRIP_P
 	SUBSCRIPTION SUBSTRING SUPPORT SYMMETRIC SYSID SYSTEM_P SYSTEM_USER
+	SET_EA_ADMIN
 
 	TABLE TABLES TABLESAMPLE TABLESPACE TARGET TEMP TEMPLATE TEMPORARY TEXT_P THEN
 	TIES TIME TIMESTAMP TO TRAILING TRANSACTION TRANSFORM
@@ -1073,6 +1081,8 @@ stmt:
 			| DropResourceAttributeStmt
 			| CreateAbacRuleStmt
 			| DropAbacRuleStmt
+			| GrantAbacAdminStmt
+			| RevokeAbacAdminStmt
 			| CreateUserMappingStmt
 			| CreatedbStmt
 			| DeallocateStmt
@@ -1849,6 +1859,51 @@ DropAbacRuleStmt:
 				$$ = (Node *) n;
 			}
 		;
+
+/*****************************************************************************
+ *
+ * Administrative ABAC
+ *
+ *****************************************************************************/
+
+GrantAbacAdminStmt:
+			GRANT ABAC_ADMIN '{' abac_admin_op_list '}' TO RoleSpec
+			{
+				GrantAbacAdminStmt *n = makeNode(GrantAbacAdminStmt);
+				n->operations = $4;
+				n->role = $7;
+				$$ = (Node *) n;
+			}
+;
+
+RevokeAbacAdminStmt:
+			REVOKE ABAC_ADMIN '{' abac_admin_op_list '}' FROM RoleSpec
+			{
+				RevokeAbacAdminStmt *n = makeNode(RevokeAbacAdminStmt);
+				n->operations = $4;
+				n->role = $7;
+				$$ = (Node *) n;
+			}
+;
+
+abac_admin_op_list:
+			abac_admin_op { $$ = list_make1($1); }
+			| abac_admin_op_list ',' abac_admin_op { $$ = lappend($1, $3); }
+;
+
+abac_admin_op:
+			CREATE_UA_ADMIN { $$ = pstrdup($1); }
+			| DROP_UA_ADMIN { $$ = pstrdup($1); }
+			| GRANT_UA_ADMIN { $$ = pstrdup($1); }
+			| REVOKE_UA_ADMIN { $$ = pstrdup($1); }
+			| CREATE_RA_ADMIN { $$ = pstrdup($1); }
+			| DROP_RA_ADMIN { $$ = pstrdup($1); }
+			| GRANT_RA_ADMIN { $$ = pstrdup($1); }
+			| REVOKE_RA_ADMIN { $$ = pstrdup($1); }
+			| CREATE_RULE_ADMIN { $$ = pstrdup($1); }
+			| DROP_RULE_ADMIN { $$ = pstrdup($1); }
+			| SET_EA_ADMIN { $$ = pstrdup($1); }
+;
 
 /*****************************************************************************
  *
@@ -18037,7 +18092,8 @@ BareColLabel:	IDENT								{ $$ = $1; }
 /* "Unreserved" keywords --- available for use as any kind of name.
  */
 unreserved_keyword:
-			ABAC_RULE
+			ABAC_ADMIN
+			| ABAC_RULE
 			| ABORT_P
 			| ABSENT
 			| ABSOLUTE_P
@@ -18090,6 +18146,9 @@ unreserved_keyword:
 			| CONVERSION_P
 			| COPY
 			| COST
+			| CREATE_RA_ADMIN
+			| CREATE_RULE_ADMIN
+			| CREATE_UA_ADMIN
 			| CSV
 			| CUBE
 			| CURRENT_P
@@ -18116,6 +18175,9 @@ unreserved_keyword:
 			| DOMAIN_P
 			| DOUBLE_P
 			| DROP
+			| DROP_RA_ADMIN
+			| DROP_RULE_ADMIN
+			| DROP_UA_ADMIN
 			| EACH
 			| EMPTY_P
 			| ENABLE_P
@@ -18148,6 +18210,8 @@ unreserved_keyword:
 			| GENERATED
 			| GLOBAL
 			| GRANTED
+			| GRANT_RA_ADMIN
+			| GRANT_UA_ADMIN
 			| GROUPS
 			| HANDLER
 			| HEADER_P
@@ -18279,6 +18343,8 @@ unreserved_keyword:
 			| RETURN
 			| RETURNS
 			| REVOKE
+			| REVOKE_RA_ADMIN
+			| REVOKE_UA_ADMIN
 			| ROLE
 			| ROLLBACK
 			| ROLLUP
@@ -18301,6 +18367,7 @@ unreserved_keyword:
 			| SESSION
 			| SET
 			| SETS
+			| SET_EA_ADMIN
 			| SHARE
 			| SHOW
 			| SIMPLE
@@ -18582,7 +18649,8 @@ reserved_keyword:
  * in kwlist.h if it is included here, or AS_LABEL if it is not.
  */
 bare_label_keyword:
-			ABAC_RULE
+			  ABAC_ADMIN
+			| ABAC_RULE
 			| ABORT_P
 			| ABSENT
 			| ABSOLUTE_P
@@ -18658,6 +18726,9 @@ bare_label_keyword:
 			| CONVERSION_P
 			| COPY
 			| COST
+			| CREATE_RA_ADMIN
+			| CREATE_RULE_ADMIN
+			| CREATE_UA_ADMIN
 			| CROSS
 			| CSV
 			| CUBE
@@ -18698,6 +18769,9 @@ bare_label_keyword:
 			| DOMAIN_P
 			| DOUBLE_P
 			| DROP
+			| DROP_RA_ADMIN
+			| DROP_RULE_ADMIN
+			| DROP_UA_ADMIN
 			| EACH
 			| ELSE
 			| EMPTY_P
@@ -18738,6 +18812,8 @@ bare_label_keyword:
 			| GENERATED
 			| GLOBAL
 			| GRANTED
+			| GRANT_RA_ADMIN
+			| GRANT_UA_ADMIN
 			| GREATEST
 			| GROUPING
 			| GROUPS
@@ -18915,6 +18991,8 @@ bare_label_keyword:
 			| RETURN
 			| RETURNS
 			| REVOKE
+			| REVOKE_RA_ADMIN
+			| REVOKE_UA_ADMIN
 			| RIGHT
 			| ROLE
 			| ROLLBACK
@@ -18941,6 +19019,7 @@ bare_label_keyword:
 			| SET
 			| SETOF
 			| SETS
+			| SET_EA_ADMIN
 			| SHARE
 			| SHOW
 			| SIMILAR

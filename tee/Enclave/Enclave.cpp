@@ -3,6 +3,11 @@
 #include <string.h>
 #include <stdio.h>
 
+typedef struct {
+    uint32_t role_oid;
+    uint32_t priv_mask;
+} admin_priv_entry_t;
+
 typedef struct _env_config_t {
     uint8_t workday[7];
     int start_minute;
@@ -15,6 +20,9 @@ typedef struct _env_config_t {
         uint32_t mask;
     } subnets[32];
 
+    /* admin privileges */
+    int admin_count;
+    admin_priv_entry_t admin_privs[32];
 } env_config_t;
 
 static env_config_t g_env_config;
@@ -30,6 +38,7 @@ sgx_status_t enclave_init_env(sgx_sealed_data_t* sealed_data,
     g_env_config.start_minute = 0;
     g_env_config.end_minute = 24 * 60;
     g_env_config.subnet_count = 0;
+    g_env_config.admin_count = 0;
     return SGX_SUCCESS;
 }
 
@@ -234,6 +243,93 @@ sgx_status_t enclave_check_env(int day_of_week,
     return SGX_SUCCESS;
 }
 
+sgx_status_t enclave_grant_admin_priv(uint32_t role_oid,
+                                      uint32_t priv_mask)
+{
+    /* Check if role already exists */
+    for (int i = 0; i < g_env_config.admin_count; i++)
+    {
+        if (g_env_config.admin_privs[i].role_oid == role_oid)
+        {
+            g_env_config.admin_privs[i].priv_mask |= priv_mask;
+
+            char buf[128];
+            snprintf(buf, sizeof(buf),
+                     "UPDATE_ADMIN_PRIV: role=%u mask=%u",
+                     role_oid,
+                     g_env_config.admin_privs[i].priv_mask);
+
+            ocall_print(buf);
+
+            return SGX_SUCCESS;
+        }
+    }
+
+    /* Insert new entry */
+    if (g_env_config.admin_count >= 32)
+        return SGX_ERROR_OUT_OF_MEMORY;
+
+    int idx = g_env_config.admin_count++;
+
+    g_env_config.admin_privs[idx].role_oid = role_oid;
+    g_env_config.admin_privs[idx].priv_mask = priv_mask;
+
+    char buf[128];
+    snprintf(buf, sizeof(buf),
+             "ADD_ADMIN_PRIV: role=%u mask=%u total=%d",
+             role_oid,
+             priv_mask,
+             g_env_config.admin_count);
+
+    ocall_print(buf);
+
+    return SGX_SUCCESS;
+}
+
+sgx_status_t enclave_revoke_admin_priv(uint32_t role_oid,
+                                       uint32_t priv_mask)
+{
+    for (int i = 0; i < g_env_config.admin_count; i++)
+    {
+        if (g_env_config.admin_privs[i].role_oid == role_oid)
+        {
+            g_env_config.admin_privs[i].priv_mask &= ~priv_mask;
+
+            char buf[128];
+            snprintf(buf, sizeof(buf),
+                     "REVOKE_ADMIN_PRIV: role=%u mask=%u",
+                     role_oid,
+                     g_env_config.admin_privs[i].priv_mask);
+
+            ocall_print(buf);
+
+            return SGX_SUCCESS;
+        }
+    }
+
+    return SGX_SUCCESS;
+}
+
+sgx_status_t enclave_check_admin_priv(uint32_t role_oid,
+                                      uint32_t priv_mask,
+                                      int *result)
+{
+    *result = 0;
+
+    for (int i = 0; i < g_env_config.admin_count; i++)
+    {
+        if (g_env_config.admin_privs[i].role_oid == role_oid)
+        {
+            if (g_env_config.admin_privs[i].priv_mask & priv_mask)
+                *result = 1;
+
+            return SGX_SUCCESS;
+        }
+    }
+
+    return SGX_SUCCESS;
+}
+
 sgx_status_t enclave_debug_dump_env()
 {
     char buf[256];
@@ -268,6 +364,19 @@ sgx_status_t enclave_debug_dump_env()
             g_env_config.subnets[i].name,
             g_env_config.subnets[i].network,
             g_env_config.subnets[i].mask);
+        ocall_print(buf);
+    }
+
+    snprintf(buf, sizeof(buf), "Admin Privileges: %d", g_env_config.admin_count);
+    ocall_print(buf);
+
+    for (int i = 0; i < g_env_config.admin_count; i++)
+    {
+        snprintf(buf, sizeof(buf),
+            "  [%d] role_oid=%u priv_mask=%u",
+            i,
+            g_env_config.admin_privs[i].role_oid,
+            g_env_config.admin_privs[i].priv_mask);
         ocall_print(buf);
     }
 

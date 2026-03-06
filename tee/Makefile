@@ -17,6 +17,7 @@ else
 	App_Link_Flags := -L$(SGX_SDK)/lib64 -l$(Urts_Library_Name) -lpthread
 endif
 
+App_Include_Paths := -I. -I$(SGX_SDK)/include -I../src/include
 App_Cpp_Files := sgx_service.cpp
 Enclave_Include_Paths := -I. -I$(SGX_SDK)/include -I$(SGX_SDK)/include/tlibc -I$(SGX_SDK)/include/libcxx
 Enclave_Cpp_Files := Enclave/Enclave.cpp
@@ -25,7 +26,7 @@ all: sgx_service enclave.signed.so
 
 # App Compilation
 sgx_service: Enclave_u.o $(App_Cpp_Files) setup-group
-	g++ -o sgx_service Enclave_u.o $(App_Cpp_Files) -I. -I$(SGX_SDK)/include $(App_Link_Flags)
+	g++ -o sgx_service Enclave_u.o $(App_Cpp_Files) $(App_Include_Paths) $(App_Link_Flags)
 
 setup-group:
 	- sudo groupadd sgxabac
