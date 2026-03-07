@@ -29,9 +29,26 @@ sgx_service: Enclave_u.o $(App_Cpp_Files) setup-group
 	g++ -o sgx_service Enclave_u.o $(App_Cpp_Files) $(App_Include_Paths) $(App_Link_Flags)
 
 setup-group:
-	- sudo groupadd sgxabac
-	- sudo usermod -aG sgxabac postgres
-	- sudo usermod -aG sgxabac $(USER)
+	@if ! getent group sgxabac > /dev/null; then \
+		echo "Creating group sgxabac"; \
+		sudo groupadd sgxabac; \
+	else \
+		echo "Group sgxabac already exists"; \
+	fi
+
+	@if ! id -nG postgres | grep -qw sgxabac; then \
+		echo "Adding postgres to sgxabac"; \
+		sudo usermod -aG sgxabac postgres; \
+	else \
+		echo "postgres already in sgxabac"; \
+	fi
+
+	@if ! id -nG $(USER) | grep -qw sgxabac; then \
+		echo "Adding $(USER) to sgxabac"; \
+		sudo usermod -aG sgxabac $(USER); \
+	else \
+		echo "$(USER) already in sgxabac"; \
+	fi
 
 Enclave_u.o: Enclave_u.c
 	g++ -c Enclave_u.c -I$(SGX_SDK)/include

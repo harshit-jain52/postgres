@@ -837,6 +837,7 @@ void handle_workday(SetEnvAttributeStmt *stmt)
         "sunday","monday","tuesday",
         "wednesday","thursday","friday","saturday"
     };
+    msg_set_workday msg;
 
     foreach(item, stmt->values)
     {
@@ -867,7 +868,6 @@ void handle_workday(SetEnvAttributeStmt *stmt)
                     (errmsg("invalid workday \"%s\"", day)));
     }
 
-    msg_set_workday msg;
 	memcpy(msg.workday, workday_arr, 7);
 
 	send_request_to_sgx_service(
@@ -884,6 +884,9 @@ void handle_timewindow(SetEnvAttributeStmt *stmt)
     int vals[4];
     int idx = 0;
     ListCell *lc;
+	int sh, sm, eh, em;
+	int start_min, end_min;
+    msg_set_timewindow msg;
 
     if (list_length(stmt->values) != 4)
         ereport(ERROR,
@@ -903,8 +906,8 @@ void handle_timewindow(SetEnvAttributeStmt *stmt)
         vals[idx++] = intVal(&((A_Const *)node)->val);
     }
 
-    int sh = vals[0], sm = vals[1];
-    int eh = vals[2], em = vals[3];
+    sh = vals[0], sm = vals[1];
+    eh = vals[2], em = vals[3];
 
     if (sh < 0 || sh > 23 ||
         eh < 0 || eh > 23 ||
@@ -914,15 +917,14 @@ void handle_timewindow(SetEnvAttributeStmt *stmt)
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                  errmsg("invalid hour/minute in timewindow")));
 
-    int start_min = sh * 60 + sm;
-    int end_min   = eh * 60 + em;
+    start_min = sh * 60 + sm;
+    end_min   = eh * 60 + em;
 
     if (start_min >= end_min)
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                  errmsg("start time must be earlier than end time")));
 
-    msg_set_timewindow msg;
 	msg.start_min = start_min;
 	msg.end_min   = end_min;
 
@@ -949,6 +951,7 @@ handle_subnet(SetEnvAttributeStmt *stmt)
         inet *ip;
         uint32_t network;
         uint32_t mask_bits;
+        msg_set_subnet msg;
 
         if (!IsA(def->arg, String))
             ereport(ERROR,
@@ -969,7 +972,6 @@ handle_subnet(SetEnvAttributeStmt *stmt)
         network = ntohl(*((uint32_t *) ip_addr(ip)));
         mask_bits = ip_bits(ip);
 
-        msg_set_subnet msg;
 		memset(&msg, 0, sizeof(msg));
 
 		strncpy(msg.name, subnet_name, 63);
@@ -1073,6 +1075,8 @@ check_unique_attributes(List *attrs, const char *attr_type)
     foreach(lc, attrs)
     {
 		char *attr_name;
+		ListCell   *lc2;
+
 		if(strcmp(attr_type, "environment") == 0){
 			DefElem    *def = (DefElem *) lfirst(lc);
 			attr_name = def->defname;
@@ -1081,7 +1085,6 @@ check_unique_attributes(List *attrs, const char *attr_type)
 			AttributeTriplet *triplet = castNode(AttributeTriplet, (Node *)lfirst(lc));
 			attr_name = triplet->attr_name;
 		}
-        ListCell   *lc2;
 
         foreach(lc2, seen_names)
         {  
@@ -1321,6 +1324,7 @@ void GrantAbacAdmin(ParseState *pstate, GrantAbacAdminStmt *stmt){
     uint32 priv_mask = 0;
     ListCell *lc;
 	Oid role_oid;
+	msg_admin_priv req;
     
 	/* Only superuser can grant admin privileges */
     if (!superuser_arg(currentUserId))
@@ -1337,7 +1341,6 @@ void GrantAbacAdmin(ParseState *pstate, GrantAbacAdminStmt *stmt){
 	role_oid = get_rolespec_oid(stmt->role, false);
 
 	/* Send to SGX enclave */
-	msg_admin_priv req;
     req.role_oid = role_oid;
     req.priv_mask = priv_mask;
 
@@ -1358,6 +1361,7 @@ void RevokeAbacAdmin(ParseState *pstate, RevokeAbacAdminStmt *stmt){
 	uint32 priv_mask = 0;
 	ListCell *lc;
 	Oid role_oid;
+	msg_admin_priv req;
 	
 	/* Only superuser can revoke admin privileges */
 	if (!superuser_arg(currentUserId))
@@ -1374,7 +1378,6 @@ void RevokeAbacAdmin(ParseState *pstate, RevokeAbacAdminStmt *stmt){
 	role_oid = get_rolespec_oid(stmt->role, false);
 
 	/* Send to SGX enclave */
-	msg_admin_priv req;
 	req.role_oid = role_oid;
 	req.priv_mask = priv_mask;
 

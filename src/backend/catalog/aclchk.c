@@ -3294,9 +3294,9 @@ pg_abac_mask(Oid resourceid, Oid userid)
         Form_pg_abac_rule_priv rule_priv = (Form_pg_abac_rule_priv) GETSTRUCT(tuple);
 		Datum server_load_datum, is_workday_datum, is_worktime_datum, subnet_name_datum;
 		bool server_load_null, is_workday_null, is_worktime_null, subnet_name_null;
-		float8 server_load_value;
-		bool is_workday_value, is_worktime_value;
-		char *subnet_name_value;
+		float8 server_load_value = 0.0;
+		bool is_workday_value = false, is_worktime_value = false;
+		char *subnet_name_value = NULL;
 
 		is_workday_datum = heap_getattr(tuple,
 						Anum_pg_abac_rule_priv_is_workday,
@@ -5078,18 +5078,20 @@ check_abac_env_conditions(bool is_workday, bool is_workday_null,
                           const char *subnet_name, bool subnet_name_null,
                           float8 allowed_server_load, bool server_load_null)
 {
+	/* Gather runtime context */
+	time_t rawtime;
+	struct tm *timeinfo;
+	int day_of_week;
+	int current_minute;
+	uint32_t client_ip = 0;
+	int result = 1;
+	msg_check_env msg;
+
     /* PostgreSQL-side server load check */
     if (!server_load_null &&
         allowed_server_load < get_connection_load_ratio())
         return false;
 
-    /* Gather runtime context */
-    time_t rawtime;
-    struct tm *timeinfo;
-    int day_of_week;
-    int current_minute;
-    uint32_t client_ip = 0;
-    int result = 1;
 
     time(&rawtime);
     timeinfo = localtime(&rawtime);
@@ -5116,7 +5118,6 @@ check_abac_env_conditions(bool is_workday, bool is_workday_null,
 		}
     }
 
-    msg_check_env msg;
 	memset(&msg, 0, sizeof(msg));
 
 	msg.day_of_week = day_of_week;
@@ -5314,7 +5315,6 @@ bool check_user_attribute_existence(Oid userid, Oid attr_id)
     Relation    pg_user_attr_val_rel;
     ScanKeyData skey[2];
     SysScanDesc scan;
-    HeapTuple   tuple;
     bool        exists;
 
     pg_user_attr_val_rel = table_open(UserAttrValRelationId, AccessShareLock);
@@ -5345,7 +5345,6 @@ bool check_resource_attribute_existence(Oid resourceid, Oid attr_id)
     Relation    pg_res_attr_val_rel;
     ScanKeyData skey[2];
     SysScanDesc scan;
-    HeapTuple   tuple;
     bool        exists;
 
     pg_res_attr_val_rel = table_open(ResourceAttrValRelationId, AccessShareLock);
