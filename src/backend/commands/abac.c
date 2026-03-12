@@ -548,11 +548,6 @@ void GrantResourceAttribute(ParseState *pstate, GrantResourceAttributeStmt *stmt
     ListCell   *item;
     Oid         currentUserId = GetUserId();
 
-	if (!superuser_arg(currentUserId) && !sgx_check_admin_priv(currentUserId, ABAC_ADMIN_GRANT_RA))
-			ereport(ERROR,
-					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 errmsg("must be superuser or have admin privileges to grant resource attribute")));
-
     pg_class_rel = table_open(RelationRelationId, AccessShareLock);
     pg_resource_attr_rel = table_open(ResourceAttrRelationId, AccessShareLock);
 
@@ -569,6 +564,14 @@ void GrantResourceAttribute(ParseState *pstate, GrantResourceAttributeStmt *stmt
             {
                 RangeVar   *relvar = (RangeVar *) lfirst(item);
                 resource_id = RangeVarGetRelid(relvar, NoLock, false);
+
+				if (!superuser_arg(currentUserId)
+				&& !sgx_check_admin_priv(currentUserId, ABAC_ADMIN_GRANT_RA)
+				&& !object_ownercheck(RelationRelationId, resource_id, currentUserId))
+					ereport(ERROR,
+							(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+							errmsg("must be superuser, resource owner or have admin privileges to grant resource attribute")));
+							
                 break;
             }  
             case OBJECT_FUNCTION:
@@ -583,6 +586,13 @@ void GrantResourceAttribute(ParseState *pstate, GrantResourceAttributeStmt *stmt
 											false);
 
 				resource_id = address.objectId;
+
+				if (!superuser_arg(currentUserId)
+				&& !sgx_check_admin_priv(currentUserId, ABAC_ADMIN_GRANT_RA)
+				&& !object_ownercheck(ProcedureRelationId, resource_id, currentUserId))
+					ereport(ERROR,
+							(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+							errmsg("must be superuser, resource owner or have admin privileges to grant resource attribute")));
 				break;
 			}
             default:
@@ -777,6 +787,13 @@ void RevokeResourceAttribute(ParseState *pstate, RevokeResourceAttributeStmt *st
             {
                 RangeVar   *relvar = (RangeVar *) lfirst(item);
                 resource_id = RangeVarGetRelid(relvar, NoLock, false);
+
+				if (!superuser_arg(currentUserId)
+				&& !sgx_check_admin_priv(currentUserId, ABAC_ADMIN_GRANT_RA)
+				&& !object_ownercheck(RelationRelationId, resource_id, currentUserId))
+					ereport(ERROR,
+							(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+							errmsg("must be superuser, resource owner or have admin privileges to grant resource attribute")));
                 break;
             }  
             case OBJECT_FUNCTION:
@@ -791,6 +808,13 @@ void RevokeResourceAttribute(ParseState *pstate, RevokeResourceAttributeStmt *st
 											false);
 
 				resource_id = address.objectId;
+
+				if (!superuser_arg(currentUserId)
+				&& !sgx_check_admin_priv(currentUserId, ABAC_ADMIN_GRANT_RA)
+				&& !object_ownercheck(ProcedureRelationId, resource_id, currentUserId))
+					ereport(ERROR,
+							(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+							errmsg("must be superuser, resource owner or have admin privileges to grant resource attribute")));
 				break;
 			}
             default:
