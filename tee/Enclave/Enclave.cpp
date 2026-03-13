@@ -3,12 +3,15 @@
 #include <string.h>
 #include <stdio.h>
 
+#define MAX_SUBNETS 32
+#define MAX_ADMINS 32
+
 typedef struct {
     uint32_t role_oid;
     uint32_t priv_mask;
 } admin_priv_entry_t;
 
-typedef struct _env_config_t {
+typedef struct {
     uint8_t workday[7];
     int start_minute;
     int end_minute;
@@ -18,14 +21,13 @@ typedef struct _env_config_t {
         char name[64];
         uint32_t network;
         uint32_t mask;
-    } subnets[32];
+    } subnets[MAX_SUBNETS];
 
-    /* admin privileges */
     int admin_count;
-    admin_priv_entry_t admin_privs[32];
-} env_config_t;
+    admin_priv_entry_t admin_privs[MAX_ADMINS];
+} trusted_config_t;
 
-static env_config_t g_env_config;
+static trusted_config_t g_env_config;
 
 sgx_status_t enclave_init_env(sgx_sealed_data_t* sealed_data,
                               uint32_t sealed_size)
@@ -102,7 +104,7 @@ sgx_status_t enclave_set_subnet(const char* name,
     }
 
     // If not found, insert new subnet
-    if (g_env_config.subnet_count >= 32)
+    if (g_env_config.subnet_count >= MAX_SUBNETS)
         return SGX_ERROR_OUT_OF_MEMORY;
 
     int idx = g_env_config.subnet_count++;
@@ -126,14 +128,14 @@ sgx_status_t enclave_seal_env(sgx_sealed_data_t* sealed_data,
                               uint32_t sealed_size)
 {
     uint32_t required_size =
-        sgx_calc_sealed_data_size(0, sizeof(env_config_t));
+        sgx_calc_sealed_data_size(0, sizeof(trusted_config_t));
 
     if (sealed_size < required_size)
         return SGX_ERROR_INVALID_PARAMETER;
 
     return sgx_seal_data(0,
                          NULL,
-                         sizeof(env_config_t),
+                         sizeof(trusted_config_t),
                          (uint8_t*)&g_env_config,
                          sealed_size,
                          sealed_data);
@@ -143,7 +145,7 @@ sgx_status_t enclave_unseal_env(const sgx_sealed_data_t* sealed_data,
                                 uint32_t sealed_size)
 {
     uint32_t mac_len = 0;
-    uint32_t decrypt_len = sizeof(env_config_t);
+    uint32_t decrypt_len = sizeof(trusted_config_t);
 
     return sgx_unseal_data(sealed_data,
                            NULL,
@@ -155,7 +157,7 @@ sgx_status_t enclave_unseal_env(const sgx_sealed_data_t* sealed_data,
 sgx_status_t enclave_get_sealed_size(uint32_t* sealed_size)
 {
     *sealed_size =
-        sgx_calc_sealed_data_size(0, sizeof(env_config_t));
+        sgx_calc_sealed_data_size(0, sizeof(trusted_config_t));
     return SGX_SUCCESS;
 }
 
@@ -266,7 +268,7 @@ sgx_status_t enclave_grant_admin_priv(uint32_t role_oid,
     }
 
     /* Insert new entry */
-    if (g_env_config.admin_count >= 32)
+    if (g_env_config.admin_count >= MAX_ADMINS)
         return SGX_ERROR_OUT_OF_MEMORY;
 
     int idx = g_env_config.admin_count++;
