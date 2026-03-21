@@ -1,0 +1,10 @@
+Client->postgres:Set ENV_ATTRIBUTE\nworktime = a,b,c,d
+postgres->sgx_service:SGX_MSG_CHECK_ADMIN_PRIV\n(role_oid,SET_EA_ADMIN)
+sgx_service->SGX Enclave: ECALL enclave_check_admin_priv
+SGX Enclave->sgx_service:has_priv
+sgx_service->postgres:has_priv
+postgres->sgx_service:SGX_MSG_SET_TIMEWINDOW\n(start_minute,end_minute)
+sgx_service->SGX Enclave:ECALL enclave_set_timewindow
+SGX Enclave->sgx_service:SGX_SUCCESS
+sgx_service->postgres:Success
+postgres->Client: SET ENVIRONMENT ATTRIBUTE
